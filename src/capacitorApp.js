@@ -56,6 +56,9 @@ export function setupCapacitorApp() {
   }
   callPluginMethod(SplashScreen, 'hide');
   callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
+  const dispatchKeyboardEvent = (name, event = {}) => {
+    window.dispatchEvent(new CustomEvent(name, { detail: event }));
+  };
   const handleKeyboardShow = (event) => {
     setKeyboardHeight(event?.keyboardHeight || 0);
     syncVisualViewportHeight();
@@ -64,10 +67,22 @@ export function setupCapacitorApp() {
     setKeyboardHeight(0);
     syncVisualViewportHeight();
   };
-  Keyboard?.addListener?.('keyboardWillShow', handleKeyboardShow);
-  Keyboard?.addListener?.('keyboardDidShow', handleKeyboardShow);
-  Keyboard?.addListener?.('keyboardWillHide', handleKeyboardHide);
-  Keyboard?.addListener?.('keyboardDidHide', handleKeyboardHide);
+  Keyboard?.addListener?.('keyboardWillShow', (event) => {
+    handleKeyboardShow(event);
+    dispatchKeyboardEvent('keyboardWillShow', event);
+  });
+  Keyboard?.addListener?.('keyboardDidShow', (event) => {
+    handleKeyboardShow(event);
+    dispatchKeyboardEvent('keyboardDidShow', event);
+  });
+  Keyboard?.addListener?.('keyboardWillHide', (event) => {
+    handleKeyboardHide(event);
+    dispatchKeyboardEvent('keyboardWillHide', event);
+  });
+  Keyboard?.addListener?.('keyboardDidHide', (event) => {
+    handleKeyboardHide(event);
+    dispatchKeyboardEvent('keyboardDidHide', event);
+  });
 
   App?.addListener?.('resume', () => {
     window.dispatchEvent(new Event('capacitor:resume'));

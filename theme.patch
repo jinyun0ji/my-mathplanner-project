@@ -1,16 +1,150 @@
+diff --git a/src/capacitorApp.js b/src/capacitorApp.js
+index d6a113bee03207b5fad1dca325b877f85ed0afd4..6f4ea26c686edb603b1ba1e8e66a8a4e7b25521b 100644
+--- a/src/capacitorApp.js
++++ b/src/capacitorApp.js
+@@ -34,42 +34,57 @@ export function setupCapacitorApp() {
+ 
+   document.documentElement.classList.add('capacitor-native');
+   document.body?.classList.add('capacitor-native');
+   setKeyboardHeight(0);
+   syncVisualViewportHeight();
+   window.visualViewport?.addEventListener?.('resize', syncVisualViewportHeight);
+   window.visualViewport?.addEventListener?.('scroll', syncVisualViewportHeight);
+   window.addEventListener('resize', syncVisualViewportHeight);
+ 
+   if (isDevelopment) {
+     console.log('[capacitor] native class applied');
+     requestAnimationFrame(() => {
+       const safeTopValue = getComputedStyle(document.documentElement).getPropertyValue('--app-safe-top').trim();
+       console.log('[capacitor] safeTop value', safeTopValue || '0px');
+     });
+   }
+ 
+   const { App, Keyboard, SplashScreen, StatusBar } = capacitor.Plugins ?? {};
+ 
+   if (capacitor.getPlatform?.() === 'ios') {
+     callPluginMethod(StatusBar, 'setOverlaysWebView', { overlay: false });
+     callPluginMethod(StatusBar, 'setStyle', { style: 'DEFAULT' });
+   }
+   callPluginMethod(SplashScreen, 'hide');
+   callPluginMethod(Keyboard, 'setResizeMode', { mode: 'body' });
++  const dispatchKeyboardEvent = (name, event = {}) => {
++    window.dispatchEvent(new CustomEvent(name, { detail: event }));
++  };
+   const handleKeyboardShow = (event) => {
+     setKeyboardHeight(event?.keyboardHeight || 0);
+     syncVisualViewportHeight();
+   };
+   const handleKeyboardHide = () => {
+     setKeyboardHeight(0);
+     syncVisualViewportHeight();
+   };
+-  Keyboard?.addListener?.('keyboardWillShow', handleKeyboardShow);
+-  Keyboard?.addListener?.('keyboardDidShow', handleKeyboardShow);
+-  Keyboard?.addListener?.('keyboardWillHide', handleKeyboardHide);
+-  Keyboard?.addListener?.('keyboardDidHide', handleKeyboardHide);
++  Keyboard?.addListener?.('keyboardWillShow', (event) => {
++    handleKeyboardShow(event);
++    dispatchKeyboardEvent('keyboardWillShow', event);
++  });
++  Keyboard?.addListener?.('keyboardDidShow', (event) => {
++    handleKeyboardShow(event);
++    dispatchKeyboardEvent('keyboardDidShow', event);
++  });
++  Keyboard?.addListener?.('keyboardWillHide', (event) => {
++    handleKeyboardHide(event);
++    dispatchKeyboardEvent('keyboardWillHide', event);
++  });
++  Keyboard?.addListener?.('keyboardDidHide', (event) => {
++    handleKeyboardHide(event);
++    dispatchKeyboardEvent('keyboardDidHide', event);
++  });
+ 
+   App?.addListener?.('resume', () => {
+     window.dispatchEvent(new Event('capacitor:resume'));
+   });
+ }
+diff --git a/src/components/messenger/ChatMessagePane.jsx b/src/components/messenger/ChatMessagePane.jsx
+index c98f1b85174c05bc1e2c9273ca80a47c01d522fc..9a5dd3e0bcd1c38c38d90fd5a840f092d232ad11 100644
+--- a/src/components/messenger/ChatMessagePane.jsx
++++ b/src/components/messenger/ChatMessagePane.jsx
+@@ -100,50 +100,71 @@ export default function ChatMessagePane({
+         const validation = validateChatAttachment(file);
+         if (!validation.ok) {
+             setError(validation.message);
+             clearAttachment();
+             return;
+         }
+         if (previewUrl) URL.revokeObjectURL(previewUrl);
+         setAttachmentFile(file);
+         setPreviewUrl(validation.type === 'image' ? URL.createObjectURL(file) : '');
+         setError('');
+     };
+ 
+     const sortedMessages = useMemo(() => {
+         return [...messages].sort((a, b) => {
+             const av = normalizeMessageDate(a?.createdAt)?.getTime() || 0;
+             const bv = normalizeMessageDate(b?.createdAt)?.getTime() || 0;
+             return av - bv;
+         });
+     }, [messages]);
+ 
+     useEffect(() => {
+         if (!room?.id) return;
+         scheduleScrollToBottom();
+     }, [room?.id, sortedMessages.length, scheduleScrollToBottom]);
+ 
++    useEffect(() => {
++        if (!mobileCompact) return undefined;
++        const handleViewportChange = () => scheduleScrollToBottom();
++        window.visualViewport?.addEventListener?.('resize', handleViewportChange);
++        window.visualViewport?.addEventListener?.('scroll', handleViewportChange);
++        window.addEventListener('resize', handleViewportChange);
++        window.addEventListener('keyboardWillShow', handleViewportChange);
++        window.addEventListener('keyboardDidShow', handleViewportChange);
++        window.addEventListener('keyboardWillHide', handleViewportChange);
++        window.addEventListener('keyboardDidHide', handleViewportChange);
++        return () => {
++            window.visualViewport?.removeEventListener?.('resize', handleViewportChange);
++            window.visualViewport?.removeEventListener?.('scroll', handleViewportChange);
++            window.removeEventListener('resize', handleViewportChange);
++            window.removeEventListener('keyboardWillShow', handleViewportChange);
++            window.removeEventListener('keyboardDidShow', handleViewportChange);
++            window.removeEventListener('keyboardWillHide', handleViewportChange);
++            window.removeEventListener('keyboardDidHide', handleViewportChange);
++        };
++    }, [mobileCompact, scheduleScrollToBottom]);
++
+     const renderItems = useMemo(() => {
+         const list = [];
+         sortedMessages.forEach((message, index) => {
+             const prevMessage = sortedMessages[index - 1] || null;
+             const isFirst = index === 0;
+             const hasDateChanged = getMessageDateKey(prevMessage) !== getMessageDateKey(message);
+             if (isFirst || hasDateChanged) {
+                 list.push({
+                     type: 'divider',
+                     key: `divider-${message?.id || index}-${getMessageDateKey(message)}`,
+                     label: formatMessageDateDivider(message),
+                 });
+             }
+             list.push({
+                 type: 'message',
+                 key: `message-${message?.id || index}`,
+                 message,
+             });
+         });
+         return list;
+     }, [sortedMessages]);
+ 
+     const submitText = async () => {
+         const text = draft.trim();
+         if ((!text && !attachmentFile) || !room?.id) return;
 diff --git a/src/components/messenger/messengerTargets.js b/src/components/messenger/messengerTargets.js
-index c5076ce723b42732d6cf858028490afd4ffdf5ec..fee12ee2249e254a1c628f4004634393fe2c8a4a 100644
+index fee12ee2249e254a1c628f4004634393fe2c8a4a..0530340ce7118f0f7ce405849748974464acc90a 100644
 --- a/src/components/messenger/messengerTargets.js
 +++ b/src/components/messenger/messengerTargets.js
-@@ -152,73 +152,153 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
-     const safeParents = Array.isArray(parents) ? parents : [];
-     const studentById = new Map();
-     const studentByAuthUid = new Map();
-     safeStudents.forEach((student) => {
-         [student?.id, student?.studentId, student?.docId, student?.userDocId, student?.parentLinkedStudentId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
-         [student?.authUid, student?.uid, student?.studentAuthUid, student?.studentUid].filter(Boolean).forEach((uid) => studentByAuthUid.set(String(uid), student));
-     });
-     const parentById = new Map();
+@@ -160,69 +160,96 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
      const parentByAuthUid = new Map();
      safeParents.forEach((parent) => {
          [parent?.id, parent?.parentId, parent?.docId, parent?.userDocId].filter(Boolean).forEach((id) => parentById.set(String(id), parent));
@@ -28,127 +162,136 @@ index c5076ce723b42732d6cf858028490afd4ffdf5ec..fee12ee2249e254a1c628f4004634393
  
  
  const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
-+const isStudentChatRoomType = (roomType) => ['student_teacher', 'student_institute'].includes(roomType);
+ const isStudentChatRoomType = (roomType) => ['student_teacher', 'student_institute'].includes(roomType);
  
--const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
--    const directStudent = getRoomStudentIds(room).map((studentId) => studentById.get(String(studentId)) || studentByAuthUid.get(String(studentId))).find(Boolean)
--        || (room?.studentDocId ? studentById.get(String(room.studentDocId)) : null);
--    const directName = getUserName(directStudent) || normalizeText(room?.studentName);
--    if (directName) return appendStudentSuffix(directName);
-+const getStudentByAnyId = (studentId, { studentById, studentByAuthUid }) => {
-+    const normalizedId = normalizeText(studentId);
-+    if (!normalizedId) return null;
-+    return studentById.get(normalizedId) || studentByAuthUid.get(normalizedId) || null;
+ const getStudentByAnyId = (studentId, { studentById, studentByAuthUid }) => {
+     const normalizedId = normalizeText(studentId);
+     if (!normalizedId) return null;
+     return studentById.get(normalizedId) || studentByAuthUid.get(normalizedId) || null;
+ };
+ 
+-const buildStudentRoomDebugPayload = ({ room, studentId, displayName, source }) => ({
+-    roomId: room?.id || null,
+-    roomType: getRoomType(room),
+-    'room.studentId': normalizeText(room?.studentId) || null,
+-    'room.studentDocId': normalizeText(room?.studentDocId) || null,
+-    participantIds: Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [],
+-    participantRoles: room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {},
+-    participantUserDocIds: room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {},
+-    selectedStudentId: studentId || null,
+-    finalDisplayName: displayName || null,
+-    source: source || null,
+-});
+-
+-const logStudentRoomResolution = (payload) => {
+-    if (process.env.NODE_ENV === 'development') {
+-        console.log('[internal-messenger] student room counterparty resolved', payload);
++const safeJsonClone = (value) => {
++    try {
++        return JSON.parse(JSON.stringify(value ?? null));
++    } catch (error) {
++        return value ?? null;
+     }
+ };
+ 
++const buildStudentRoomDebugPayload = ({ room, resolution, displayName }) => {
++    const student = resolution?.student || null;
++    const studentAuthUid = normalizeText(getAuthUid(student)) || normalizeText(resolution?.uid) || null;
++    const studentDocumentId = normalizeText(resolution?.studentId) || normalizeText(student?.id) || normalizeText(room?.studentDocId) || null;
++    const studentName = student
++        ? (normalizeText(student?.name) || normalizeText(student?.displayName) || normalizeText(student?.studentName) || null)
++        : (normalizeText(resolution?.participantName) || normalizeText(room?.studentName) || null);
++
++    return {
++        '==================== ROOM RAW DATA ====================': true,
++        roomId: room?.id || null,
++        room: safeJsonClone(room),
++        'room.studentId': normalizeText(room?.studentId) || null,
++        'room.studentDocId': normalizeText(room?.studentDocId) || null,
++        'room.studentIds': getArrayField(room?.studentIds),
++        'room.studentName': normalizeText(room?.studentName) || null,
++        'room.parentId': normalizeText(room?.parentId) || null,
++        'room.parentName': normalizeText(room?.parentName) || null,
++        participantIds: Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [],
++        participantRoles: room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {},
++        participantUserDocIds: room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {},
++        participantNames: room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {},
++        metadata: safeJsonClone(room?.metadata || {}),
++        '==================== LOOKUP RESULT ====================': true,
++        studentLookupSuccess: Boolean(student),
++        studentLookupSource: resolution?.source || 'unresolved',
++        studentDocumentId,
++        studentAuthUid,
++        studentName,
++        finalDisplayName: displayName || null,
++    };
 +};
 +
-+const buildStudentRoomDebugPayload = ({ room, studentId, displayName, source }) => ({
-+    roomId: room?.id || null,
-+    roomType: getRoomType(room),
-+    'room.studentId': normalizeText(room?.studentId) || null,
-+    'room.studentDocId': normalizeText(room?.studentDocId) || null,
-+    participantIds: Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [],
-+    participantRoles: room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {},
-+    participantUserDocIds: room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {},
-+    selectedStudentId: studentId || null,
-+    finalDisplayName: displayName || null,
-+    source: source || null,
-+});
-+
-+const logStudentRoomResolution = (payload) => {
-+    if (process.env.NODE_ENV === 'development') {
-+        console.log('[internal-messenger] student room counterparty resolved', payload);
-+    }
++const logStudentRoomResolution = (room, payload) => {
++    if (!isStudentChatRoomType(getRoomType(room))) return;
++    console.log('ROOM RAW DATA / LOOKUP RESULT', payload);
 +};
- 
-+const findStudentForStudentRoom = (room, { studentById, studentByAuthUid }) => {
++
+ const findStudentForStudentRoom = (room, { studentById, studentByAuthUid }) => {
      const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
      const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
      const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
--    const roleStudentId = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
--    const roleStudent = roleStudentId ? (studentByAuthUid.get(roleStudentId) || studentById.get(String(userDocIds[roleStudentId] || ''))) : null;
--    const participantStudent = roleStudent || participantIds.map((participantId) => studentByAuthUid.get(participantId) || studentById.get(String(userDocIds[participantId] || ''))).find(Boolean);
--    const participantName = roleStudentId ? normalizeText(room?.participantNames?.[roleStudentId]) : '';
--    if (!participantStudent && participantName) return participantName;
--    if (!participantStudent) return '';
--
--    return getMessengerTargetDisplayName({
--        user: participantStudent,
--        role: 'student',
--        studentById,
--        parentLast4Map,
--    });
-+
-+    const studentId = normalizeText(room?.studentId);
-+    const studentFromId = getStudentByAnyId(studentId, { studentById, studentByAuthUid });
-+    if (studentFromId) return { student: studentFromId, studentId, uid: getAuthUid(studentFromId) || studentId, source: 'room.studentId' };
-+
-+    const studentDocId = normalizeText(room?.studentDocId);
-+    const studentFromDocId = getStudentByAnyId(studentDocId, { studentById, studentByAuthUid });
-+    if (studentFromDocId) return { student: studentFromDocId, studentId: studentDocId, uid: getAuthUid(studentFromDocId) || studentDocId, source: 'room.studentDocId' };
-+
-+    const studentIds = getArrayField(room?.studentIds);
-+    for (const id of studentIds) {
-+        const student = getStudentByAnyId(id, { studentById, studentByAuthUid });
-+        if (student) return { student, studentId: id, uid: getAuthUid(student) || id, source: 'room.studentIds' };
-+    }
-+
-+    const roleStudentUid = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
-+    if (roleStudentUid) {
-+        const docId = normalizeText(userDocIds[roleStudentUid]);
-+        const student = studentByAuthUid.get(roleStudentUid) || getStudentByAnyId(docId, { studentById, studentByAuthUid });
-+        if (student) return { student, studentId: docId || normalizeText(student?.id) || roleStudentUid, uid: roleStudentUid, source: 'participantRoles.student' };
-+        const participantName = normalizeText(room?.participantNames?.[roleStudentUid]);
-+        if (participantName) return { student: null, studentId: docId || roleStudentUid, uid: roleStudentUid, participantName, source: 'participantRoles.studentName' };
-+    }
-+
-+    for (const [uid, docIdValue] of Object.entries(userDocIds)) {
-+        const docId = normalizeText(docIdValue);
-+        const student = studentById.get(docId);
-+        if (student) return { student, studentId: docId, uid, source: 'participantUserDocIds' };
-+    }
-+
-+    for (const uid of participantIds) {
-+        const student = studentByAuthUid.get(uid);
-+        if (student) return { student, studentId: normalizeText(student?.id) || uid, uid, source: 'studentByAuthUid' };
-+    }
-+
-+    for (const uid of participantIds) {
-+        const student = studentById.get(uid);
-+        if (student) return { student, studentId: uid, uid: getAuthUid(student) || uid, source: 'studentById' };
-+    }
-+
-+    for (const uid of participantIds) {
-+        const docId = normalizeText(userDocIds[uid]);
-+        const student = studentByAuthUid.get(uid) || studentById.get(uid) || studentById.get(docId) || studentByAuthUid.get(docId);
-+        if (student) return { student, studentId: docId || uid, uid, source: 'participantIdsFallback' };
-+    }
-+
-+    return { student: null, studentId: '', uid: null, source: 'unresolved' };
-+};
-+
-+const getStudentDisplayNameFromResolution = (resolution, { studentById, parentLast4Map }) => {
-+    if (resolution?.student) {
-+        return getMessengerTargetDisplayName({
-+            user: resolution.student,
-+            role: 'student',
-+            studentById,
-+            parentLast4Map,
-+        });
-+    }
-+    return normalizeText(resolution?.participantName) || '';
-+};
-+
-+const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
-+    const resolution = findStudentForStudentRoom(room, { studentById, studentByAuthUid });
-+    const displayName = getStudentDisplayNameFromResolution(resolution, { studentById, parentLast4Map })
-+        || (normalizeText(room?.studentName) ? appendStudentSuffix(room.studentName) : '');
-+    logStudentRoomResolution(buildStudentRoomDebugPayload({
-+        room,
-+        studentId: resolution.studentId,
-+        displayName,
-+        source: resolution.source,
-+    }));
-+    return displayName;
+ 
+     const studentId = normalizeText(room?.studentId);
+     const studentFromId = getStudentByAnyId(studentId, { studentById, studentByAuthUid });
+     if (studentFromId) return { student: studentFromId, studentId, uid: getAuthUid(studentFromId) || studentId, source: 'room.studentId' };
+ 
+     const studentDocId = normalizeText(room?.studentDocId);
+     const studentFromDocId = getStudentByAnyId(studentDocId, { studentById, studentByAuthUid });
+     if (studentFromDocId) return { student: studentFromDocId, studentId: studentDocId, uid: getAuthUid(studentFromDocId) || studentDocId, source: 'room.studentDocId' };
+ 
+     const studentIds = getArrayField(room?.studentIds);
+     for (const id of studentIds) {
+         const student = getStudentByAnyId(id, { studentById, studentByAuthUid });
+         if (student) return { student, studentId: id, uid: getAuthUid(student) || id, source: 'room.studentIds' };
+     }
+ 
+     const roleStudentUid = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
+     if (roleStudentUid) {
+         const docId = normalizeText(userDocIds[roleStudentUid]);
+         const student = studentByAuthUid.get(roleStudentUid) || getStudentByAnyId(docId, { studentById, studentByAuthUid });
+         if (student) return { student, studentId: docId || normalizeText(student?.id) || roleStudentUid, uid: roleStudentUid, source: 'participantRoles.student' };
+         const participantName = normalizeText(room?.participantNames?.[roleStudentUid]);
+@@ -248,55 +275,54 @@ const findStudentForStudentRoom = (room, { studentById, studentByAuthUid }) => {
+     for (const uid of participantIds) {
+         const docId = normalizeText(userDocIds[uid]);
+         const student = studentByAuthUid.get(uid) || studentById.get(uid) || studentById.get(docId) || studentByAuthUid.get(docId);
+         if (student) return { student, studentId: docId || uid, uid, source: 'participantIdsFallback' };
+     }
+ 
+     return { student: null, studentId: '', uid: null, source: 'unresolved' };
+ };
+ 
+ const getStudentDisplayNameFromResolution = (resolution, { studentById, parentLast4Map }) => {
+     if (resolution?.student) {
+         return getMessengerTargetDisplayName({
+             user: resolution.student,
+             role: 'student',
+             studentById,
+             parentLast4Map,
+         });
+     }
+     return normalizeText(resolution?.participantName) || '';
+ };
+ 
+ const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
+     const resolution = findStudentForStudentRoom(room, { studentById, studentByAuthUid });
+     const displayName = getStudentDisplayNameFromResolution(resolution, { studentById, parentLast4Map })
+         || (normalizeText(room?.studentName) ? appendStudentSuffix(room.studentName) : '');
+-    logStudentRoomResolution(buildStudentRoomDebugPayload({
++    logStudentRoomResolution(room, buildStudentRoomDebugPayload({
+         room,
+-        studentId: resolution.studentId,
++        resolution,
+         displayName,
+-        source: resolution.source,
+     }));
+     return displayName;
  };
  
  const getStandardRoomDisplayTitle = (room, contextData = {}) => {
@@ -172,89 +315,57 @@ index c5076ce723b42732d6cf858028490afd4ffdf5ec..fee12ee2249e254a1c628f4004634393
              || null;
          return resolveParentRoomDisplayName({ ...room, studentName }, parent, studentById);
      }
-     return studentName || '이름 미등록 학생';
- };
-@@ -265,61 +345,80 @@ export const getMessengerTargetDisplayName = ({
-         || normalizeText(user?.displayName)
-         || normalizeText(user?.parentName);
+diff --git a/src/pages/StaffMobileMessengerPage.jsx b/src/pages/StaffMobileMessengerPage.jsx
+index 7c854c998559ef25324a6655377d139efdef96ac..52c194a5045b338b8403abb7082e19925e1edd8a 100644
+--- a/src/pages/StaffMobileMessengerPage.jsx
++++ b/src/pages/StaffMobileMessengerPage.jsx
+@@ -1,48 +1,48 @@
+ import React from 'react';
+ import { useNavigate } from 'react-router-dom';
+ import InternalMessengerPanel from '../components/messenger/InternalMessengerPanel';
+ import AccountDeletionRequestButton from '../components/common/AccountDeletionRequestButton';
  
-     if (role === 'parent' && directName) return appendParentSuffix(directName);
-     if (directName) return directName;
+ export default function StaffMobileMessengerPage({
+   userId,
+   userRole,
+   students = [],
+   parents = [],
+   classes = [],
+   onLogout,
+   profileDocId = '',
+ }) {
+   const navigate = useNavigate();
  
-     if (role === 'parent') {
-         if (process.env.NODE_ENV === 'development') {
-             console.warn('[internal-messenger] parent display name fallback', {
-                 parentId: user?.id || null,
-                 authUid: user?.authUid || null,
-             });
-         }
-         return '이름 미등록 학부모';
-     }
+   const handleAfterDeletionRequested = async () => {
+     await onLogout?.();
+     navigate('/login', { replace: true });
+   };
  
-     return '이름 미등록 사용자';
- };
- 
- export const getChatRoomCounterparty = (
-     room,
-     currentUserId,
-     students = [],
-     parents = [],
- ) => {
--    const counterpartyUid = resolveCounterpartyUid(room, currentUserId);
--    if (!counterpartyUid) return null;
--
-     const {
-         studentById,
-         studentByAuthUid,
-         parentById,
-         parentByAuthUid,
-         parentLast4Map,
-     } = buildUserLookups({ students, parents });
- 
-+    const roomType = getRoomType(room);
-+    if (isStudentChatRoomType(roomType)) {
-+        const resolution = findStudentForStudentRoom(room, { studentById, studentByAuthUid });
-+        const displayName = getStudentDisplayNameFromResolution(resolution, { studentById, parentLast4Map })
-+            || (normalizeText(room?.studentName) ? appendStudentSuffix(room.studentName) : '이름 미등록 학생');
-+        logStudentRoomResolution(buildStudentRoomDebugPayload({
-+            room,
-+            studentId: resolution.studentId,
-+            displayName,
-+            source: resolution.source,
-+        }));
-+        return {
-+            uid: resolution.uid || resolution.studentId || null,
-+            role: 'student',
-+            user: resolution.student || null,
-+            displayName,
-+        };
-+    }
-+
-+    const counterpartyUid = resolveCounterpartyUid(room, currentUserId);
-+    if (!counterpartyUid) return null;
-+
-     const participantRoles = room?.participantRoles || {};
-     const participantUserDocIds = room?.participantUserDocIds || {};
-     const roleHint = normalizeText(participantRoles[counterpartyUid]).toLowerCase();
-     const participantNames = room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {};
-     const userDocIdHint = normalizeText(participantUserDocIds[counterpartyUid]);
- 
-     const parent =
-         parentByAuthUid.get(counterpartyUid)
-         || parentById.get(counterpartyUid)
-         || (userDocIdHint ? parentById.get(userDocIdHint) : null)
-         || getRoomParentIds(room).map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId))).find(Boolean)
-         || null;
- 
-     if (hasParentRoomHint(room, counterpartyUid) || parent) {
-         return {
-             uid: counterpartyUid,
-             role: 'parent',
-             user: parent,
-             displayName: resolveParentRoomDisplayName(room, parent, studentById),
-         };
-     }
- 
-     const student =
-         studentByAuthUid.get(counterpartyUid)
-         || studentById.get(counterpartyUid)
+   return (
+-    <main className="flex mobile-keyboard-screen min-h-0 flex-col bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)]">
++    <main className="flex mobile-screen mobile-keyboard-screen mobile-chat-screen min-h-0 flex-col overflow-hidden bg-gray-50 text-gray-900 pt-[env(safe-area-inset-top)]">
+       <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-3 py-2 backdrop-blur">
+         <div className="flex items-center justify-between gap-3">
+           <h1 className="text-base font-bold text-gray-900">메신저</h1>
+           <div className="flex items-center gap-2">
+             <AccountDeletionRequestButton
+               onAfterRequested={handleAfterDeletionRequested}
+               className="rounded-full border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-600 active:bg-rose-50"
+             />
+             <button
+               type="button"
+               onClick={onLogout}
+               className="rounded-full border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-700 active:bg-gray-100"
+             >
+               로그아웃
+             </button>
+           </div>
+         </div>
+       </header>
+       <section className="min-h-0 flex-1 px-0 py-0">
+         <InternalMessengerPanel
+           userId={userId}
+           userRole={userRole}
+           students={students}
+           parents={parents}
+           classes={classes}

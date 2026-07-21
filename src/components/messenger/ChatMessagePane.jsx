@@ -122,6 +122,27 @@ export default function ChatMessagePane({
         scheduleScrollToBottom();
     }, [room?.id, sortedMessages.length, scheduleScrollToBottom]);
 
+    useEffect(() => {
+        if (!mobileCompact) return undefined;
+        const handleViewportChange = () => scheduleScrollToBottom();
+        window.visualViewport?.addEventListener?.('resize', handleViewportChange);
+        window.visualViewport?.addEventListener?.('scroll', handleViewportChange);
+        window.addEventListener('resize', handleViewportChange);
+        window.addEventListener('keyboardWillShow', handleViewportChange);
+        window.addEventListener('keyboardDidShow', handleViewportChange);
+        window.addEventListener('keyboardWillHide', handleViewportChange);
+        window.addEventListener('keyboardDidHide', handleViewportChange);
+        return () => {
+            window.visualViewport?.removeEventListener?.('resize', handleViewportChange);
+            window.visualViewport?.removeEventListener?.('scroll', handleViewportChange);
+            window.removeEventListener('resize', handleViewportChange);
+            window.removeEventListener('keyboardWillShow', handleViewportChange);
+            window.removeEventListener('keyboardDidShow', handleViewportChange);
+            window.removeEventListener('keyboardWillHide', handleViewportChange);
+            window.removeEventListener('keyboardDidHide', handleViewportChange);
+        };
+    }, [mobileCompact, scheduleScrollToBottom]);
+
     const renderItems = useMemo(() => {
         const list = [];
         sortedMessages.forEach((message, index) => {

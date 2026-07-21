@@ -182,23 +182,50 @@ const getStudentByAnyId = (studentId, { studentById, studentByAuthUid }) => {
     return studentById.get(normalizedId) || studentByAuthUid.get(normalizedId) || null;
 };
 
-const buildStudentRoomDebugPayload = ({ room, studentId, displayName, source }) => ({
-    roomId: room?.id || null,
-    roomType: getRoomType(room),
-    'room.studentId': normalizeText(room?.studentId) || null,
-    'room.studentDocId': normalizeText(room?.studentDocId) || null,
-    participantIds: Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [],
-    participantRoles: room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {},
-    participantUserDocIds: room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {},
-    selectedStudentId: studentId || null,
-    finalDisplayName: displayName || null,
-    source: source || null,
-});
-
-const logStudentRoomResolution = (payload) => {
-    if (process.env.NODE_ENV === 'development') {
-        console.log('[internal-messenger] student room counterparty resolved', payload);
+const safeJsonClone = (value) => {
+    try {
+        return JSON.parse(JSON.stringify(value ?? null));
+    } catch (error) {
+        return value ?? null;
     }
+};
+
+const buildStudentRoomDebugPayload = ({ room, resolution, displayName }) => {
+    const student = resolution?.student || null;
+    const studentAuthUid = normalizeText(getAuthUid(student)) || normalizeText(resolution?.uid) || null;
+    const studentDocumentId = normalizeText(resolution?.studentId) || normalizeText(student?.id) || normalizeText(room?.studentDocId) || null;
+    const studentName = student
+        ? (normalizeText(student?.name) || normalizeText(student?.displayName) || normalizeText(student?.studentName) || null)
+        : (normalizeText(resolution?.participantName) || normalizeText(room?.studentName) || null);
+
+    return {
+        '==================== ROOM RAW DATA ====================': true,
+        roomId: room?.id || null,
+        room: safeJsonClone(room),
+        'room.studentId': normalizeText(room?.studentId) || null,
+        'room.studentDocId': normalizeText(room?.studentDocId) || null,
+        'room.studentIds': getArrayField(room?.studentIds),
+        'room.studentName': normalizeText(room?.studentName) || null,
+        'room.parentId': normalizeText(room?.parentId) || null,
+        'room.parentName': normalizeText(room?.parentName) || null,
+        participantIds: Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [],
+        participantRoles: room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {},
+        participantUserDocIds: room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {},
+        participantNames: room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {},
+        metadata: safeJsonClone(room?.metadata || {}),
+        '==================== LOOKUP RESULT ====================': true,
+        studentLookupSuccess: Boolean(student),
+        studentLookupSource: resolution?.source || 'unresolved',
+        studentDocumentId,
+        studentAuthUid,
+        studentName,
+        finalDisplayName: displayName || null,
+    };
+};
+
+const logStudentRoomResolution = (room, payload) => {
+    if (!isStudentChatRoomType(getRoomType(room))) return;
+    console.log('ROOM RAW DATA / LOOKUP RESULT', payload);
 };
 
 const findStudentForStudentRoom = (room, { studentById, studentByAuthUid }) => {
@@ -270,11 +297,10 @@ const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, par
     const resolution = findStudentForStudentRoom(room, { studentById, studentByAuthUid });
     const displayName = getStudentDisplayNameFromResolution(resolution, { studentById, parentLast4Map })
         || (normalizeText(room?.studentName) ? appendStudentSuffix(room.studentName) : '');
-    logStudentRoomResolution(buildStudentRoomDebugPayload({
+    logStudentRoomResolution(room, buildStudentRoomDebugPayload({
         room,
-        studentId: resolution.studentId,
+        resolution,
         displayName,
-        source: resolution.source,
     }));
     return displayName;
 };
