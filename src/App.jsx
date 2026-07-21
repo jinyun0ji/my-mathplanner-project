@@ -12,6 +12,7 @@ import InviteSignupPage from './pages/InviteSignupPage';
 import { redirectToKakao, redirectToNaver } from './auth/socialRedirect';
 import { signInWithGoogle, signInWithReviewEmail } from './auth/authService';
 import StudentLogin from './auth/StudentLogin';
+import PublicLegalPage from './pages/PublicLegalPage';
 import useAuth from './auth/useAuth';
 import { getDefaultRouteForRole } from './auth/authRedirects';
 import { DELETION_REQUESTED_MESSAGE } from './accountDeletion';
@@ -75,6 +76,9 @@ function AppRouter() {
             <Route path="/auth/callback" element={<SocialCallback />} />
             <Route path="/login" element={<LoginRoute />} />
             <Route path="/student/login" element={<StudentLogin />} />
+            <Route path="/privacy" element={<PublicLegalPage type="privacy" />} />
+            <Route path="/terms" element={<PublicLegalPage type="terms" />} />
+            <Route path="/account-delete" element={<PublicLegalPage type="accountDelete" />} />
             <Route path="/student/home" element={<Navigate to="/home" replace />} />
             <Route path="/parent/home" element={<Navigate to="/home" replace />} />
             <Route path="/signup" element={<Navigate to="/signup/invite" replace />} />

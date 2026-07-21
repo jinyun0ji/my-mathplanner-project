@@ -58,10 +58,19 @@ const appendParentSuffix = (name) => {
     return normalized.endsWith('학부모') ? normalized : `${normalized} 학부모`;
 };
 
+const appendStudentSuffix = (name) => {
+    const normalized = normalizeText(name);
+    if (!normalized) return '';
+    return normalized.endsWith('학생') ? normalized : `${normalized} 학생`;
+};
+
+const isStaffRole = (role) => ['admin', 'staff', 'teacher', 'teaching', 'operator', '운영자', '강사'].includes(lower(role));
+const isFallbackName = (name) => ['운영자', '이름 미등록', '이름 미등록 학생', '이름 미등록 학부모', '이름 미등록 학생 학부모'].includes(normalizeText(name));
+
 
 const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
 const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
-const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName);
+const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName) || normalizeText(user?.parentName);
 const isExcludedStudent = (student = {}) => (
     student?.active === false
     || lower(student?.status) === 'withdrawn'
@@ -122,11 +131,20 @@ const hasParentRoomHint = (room, counterpartyUid = '') => {
 };
 
 const resolveParentRoomDisplayName = (room, parent, studentById) => {
-    const studentName = normalizeText(room?.studentName)
-        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
-    if (studentName) return appendParentSuffix(studentName);
+    const parentName = getUserName(parent);
+    if (parentName && !isFallbackName(parentName)) return appendParentSuffix(parentName);
 
-    return '이름 미등록 학생 학부모';
+    const explicitParentName = normalizeText(room?.parentName);
+    if (explicitParentName && !isFallbackName(explicitParentName)) return appendParentSuffix(explicitParentName);
+
+    const linkedStudentIds = Array.isArray(parent?.studentIds) ? parent.studentIds.map(String) : [parent?.studentId, parent?.linkedStudentId].filter(Boolean).map(String);
+    const linkedStudentName = getStudentNameFromIds(linkedStudentIds, studentById);
+    const studentName = linkedStudentName
+        || normalizeText(room?.studentName)
+        || getStudentNameFromIds(getRoomStudentIds(room), studentById);
+    if (studentName && !isFallbackName(studentName)) return appendParentSuffix(studentName);
+
+    return '이름 미등록 학부모';
 };
 
 const buildUserLookups = ({ students = [], parents = [] }) => {
@@ -135,14 +153,14 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
     const studentById = new Map();
     const studentByAuthUid = new Map();
     safeStudents.forEach((student) => {
-        [student?.id, student?.studentId, student?.docId, student?.userDocId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
+        [student?.id, student?.studentId, student?.docId, student?.userDocId, student?.parentLinkedStudentId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
         [student?.authUid, student?.uid, student?.studentAuthUid, student?.studentUid].filter(Boolean).forEach((uid) => studentByAuthUid.set(String(uid), student));
     });
     const parentById = new Map();
     const parentByAuthUid = new Map();
     safeParents.forEach((parent) => {
-        [parent?.id, parent?.parentId, parent?.docId].filter(Boolean).forEach((id) => parentById.set(String(id), parent));
-        [parent?.authUid, parent?.uid, parent?.parentUid].filter(Boolean).forEach((uid) => parentByAuthUid.set(String(uid), parent));
+        [parent?.id, parent?.parentId, parent?.docId, parent?.userDocId].filter(Boolean).forEach((id) => parentById.set(String(id), parent));
+        [parent?.authUid, parent?.uid, parent?.parentUid, parent?.userUid].filter(Boolean).forEach((uid) => parentByAuthUid.set(String(uid), parent));
     });
     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
     return {
@@ -161,7 +179,7 @@ const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, par
     const directStudent = getRoomStudentIds(room).map((studentId) => studentById.get(String(studentId)) || studentByAuthUid.get(String(studentId))).find(Boolean)
         || (room?.studentDocId ? studentById.get(String(room.studentDocId)) : null);
     const directName = getUserName(directStudent) || normalizeText(room?.studentName);
-    if (directName) return directName;
+    if (directName) return appendStudentSuffix(directName);
 
     const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
     const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
@@ -192,10 +210,15 @@ const getStandardRoomDisplayTitle = (room, contextData = {}) => {
     const studentName = getStudentDisplayNameForRoom(room, { studentById, studentByAuthUid, parentLast4Map });
     if (roomType === 'parent_teacher' || roomType === 'parent_institute') {
         const parentIds = getRoomParentIds(room);
+        const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
+        const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
+        const roleParentUid = Object.keys(roles).find((uid) => isParentRole(roles[uid]));
         const parent = parentIds
             .map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId)))
-            .find(Boolean) || null;
-        return studentName ? appendParentSuffix(studentName) : resolveParentRoomDisplayName(room, parent, studentById);
+            .find(Boolean)
+            || (roleParentUid ? (parentByAuthUid.get(roleParentUid) || parentById.get(roleParentUid) || parentById.get(String(userDocIds[roleParentUid] || ''))) : null)
+            || null;
+        return resolveParentRoomDisplayName({ ...room, studentName }, parent, studentById);
     }
     return studentName || '이름 미등록 학생';
 };
@@ -203,7 +226,11 @@ const getStandardRoomDisplayTitle = (room, contextData = {}) => {
 const resolveCounterpartyUid = (room, currentUserId) => {
     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
     if (!participantIds.length) return null;
-    return participantIds.find((uid) => uid !== String(currentUserId || '')) || participantIds[0] || null;
+    const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
+    const current = String(currentUserId || '');
+    const nonStaff = participantIds.find((uid) => uid !== current && !isStaffRole(roles[uid]));
+    if (nonStaff) return nonStaff;
+    return participantIds.find((uid) => uid !== current) || participantIds[0] || null;
 };
 
 export const getMessengerTargetDisplayName = ({
@@ -215,10 +242,10 @@ export const getMessengerTargetDisplayName = ({
     if (!user) return '';
 
     if (role === 'student') {
-        return normalizeText(user?.name)
+        const studentName = normalizeText(user?.name)
             || normalizeText(user?.displayName)
-            || formatStudentNameWithOptionalParentLast4(user, parentLast4Map)
-            || '이름 미등록 학생';
+            || formatStudentNameWithOptionalParentLast4(user, parentLast4Map);
+        return studentName ? appendStudentSuffix(studentName) : '이름 미등록 학생';
     }
 
     const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
@@ -238,7 +265,7 @@ export const getMessengerTargetDisplayName = ({
         || normalizeText(user?.displayName)
         || normalizeText(user?.parentName);
 
-    if (role === 'parent' && directName) return '이름 미등록 학부모';
+    if (role === 'parent' && directName) return appendParentSuffix(directName);
     if (directName) return directName;
 
     if (role === 'parent') {
@@ -274,10 +301,12 @@ export const getChatRoomCounterparty = (
     const participantRoles = room?.participantRoles || {};
     const participantUserDocIds = room?.participantUserDocIds || {};
     const roleHint = normalizeText(participantRoles[counterpartyUid]).toLowerCase();
+    const participantNames = room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {};
     const userDocIdHint = normalizeText(participantUserDocIds[counterpartyUid]);
 
     const parent =
         parentByAuthUid.get(counterpartyUid)
+        || parentById.get(counterpartyUid)
         || (userDocIdHint ? parentById.get(userDocIdHint) : null)
         || getRoomParentIds(room).map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId))).find(Boolean)
         || null;
@@ -293,6 +322,7 @@ export const getChatRoomCounterparty = (
 
     const student =
         studentByAuthUid.get(counterpartyUid)
+        || studentById.get(counterpartyUid)
         || (userDocIdHint ? studentById.get(userDocIdHint) : null)
         || (room?.studentId ? studentById.get(String(room.studentId)) : null);
 
@@ -310,7 +340,7 @@ export const getChatRoomCounterparty = (
         };
     }
 
-    const hintedName = normalizeText(room?.participantNames?.[counterpartyUid]);
+    const hintedName = normalizeText(participantNames?.[counterpartyUid]);
     const resolvedRole = roleHint || 'staff';
     const roleLabel = STAFF_ROLE_LABEL_MAP[resolvedRole] || '담당자';
     if (process.env.NODE_ENV === 'development') {
@@ -332,7 +362,10 @@ export const getChatRoomCounterparty = (
 
 export const getChatRoomDisplayTitle = (room, currentUserId, contextData = {}) => {
     const standardTitle = getStandardRoomDisplayTitle(room, contextData);
-    if (standardTitle) return standardTitle;
+    if (standardTitle) {
+        if (process.env.NODE_ENV === 'development') console.log('[internal-messenger] display name resolved', { roomId: room?.id || null, roomType: getRoomType(room), currentUserId, participantIds: Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [], finalDisplayName: standardTitle });
+        return standardTitle;
+    }
 
     const counterparty = getChatRoomCounterparty(
         room,

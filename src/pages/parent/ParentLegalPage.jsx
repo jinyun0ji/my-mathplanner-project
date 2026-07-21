@@ -1,10 +1,14 @@
 import React from 'react';
 
-const renderParagraphs = (paragraphs = []) => paragraphs.map((paragraph, index) => (
-  <p key={index} className="text-sm leading-6 text-gray-700 whitespace-pre-line">
-    {paragraph}
-  </p>
-));
+const renderParagraphs = (paragraphs = []) => paragraphs.map((paragraph, index) => {
+  const text = String(paragraph || '');
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text.trim());
+  return (
+    <p key={index} className="text-sm leading-6 text-gray-700 whitespace-pre-line">
+      {isEmail ? <a className="font-semibold text-[#455fab] underline underline-offset-2" href={`mailto:${text.trim()}`}>{text.trim()}</a> : paragraph}
+    </p>
+  );
+});
 
 const renderItems = (items = []) => (
   <ul className="mt-3 space-y-2 pl-4 text-sm leading-6 text-gray-700 list-disc">

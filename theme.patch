@@ -1,721 +1,567 @@
-diff --git a/ios/App/App/NativeYouTubePlayerViewController.swift b/ios/App/App/NativeYouTubePlayerViewController.swift
-index 89e9ae34ab4ef0ae8e4f1cc84b8dc841df0c18ba..dcd8139ef5e3e241f3e7e01bef928a1c4cf3621f 100644
---- a/ios/App/App/NativeYouTubePlayerViewController.swift
-+++ b/ios/App/App/NativeYouTubePlayerViewController.swift
-@@ -131,80 +131,213 @@ final class NativeYouTubePlayerViewController: UIViewController, YTPlayerViewDel
-             "rel": 0,
-             "modestbranding": 1
-         ]
+diff --git a/src/App.jsx b/src/App.jsx
+index 18697473674628e8119b98f580352f44be7b4d13..2697e37c98beb4a3bd2c0af1da03351c42dd9036 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -1,39 +1,40 @@
+ // src/App.jsx
+ import React, { useEffect } from 'react';
+ import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+ import './output.css';
  
-         if startSeconds > 0 {
-             playerVars["start"] = Int(startSeconds)
-         }
+ import AuthGate from './app/AuthGate';
+ import { AuthProvider } from './auth/useAuth';
+ import SocialCallback from './pages/SocialCallback';
+ import { UserProvider } from './auth/UserContext';
+ import LoginPage from './pages/LoginPage';
+ import InviteSignupPage from './pages/InviteSignupPage';
+ import { redirectToKakao, redirectToNaver } from './auth/socialRedirect';
+ import { signInWithGoogle, signInWithReviewEmail } from './auth/authService';
+ import StudentLogin from './auth/StudentLogin';
++import PublicLegalPage from './pages/PublicLegalPage';
+ import useAuth from './auth/useAuth';
+ import { getDefaultRouteForRole } from './auth/authRedirects';
+ import { DELETION_REQUESTED_MESSAGE } from './accountDeletion';
+ import { isParentRole, isStudentRole } from './constants/roles';
  
-         print("[NativeYouTubePlayerViewController] loading videoId=\(videoId), startSeconds=\(startSeconds)")
-         playerView.load(withVideoId: videoId, playerVars: playerVars)
-     }
+ function LoginRoute() {
+     const { user, role, userProfile, loading, logout } = useAuth();
+     const navigate = useNavigate();
  
-     @objc private func closeTapped() {
-         print("[NativeYouTubePlayerViewController] close tapped")
-         dismiss(animated: true)
-     }
- 
-     @objc private func memoListTapped() {
-         showMemoListOverlay()
-     }
- 
-     @objc private func videoListTapped() {
-         dismissActiveOverlay(animated: false)
-         let overlay = makeDimmingOverlay()
-         let panel = makeRoundedPanel()
--        let stack = makeSimpleSheet(title: "영상 목록", in: panel)
--        if lessonVideos.isEmpty { stack.addArrangedSubview(makeInfoLabel("영상 목록이 없습니다.")) }
--        lessonVideos.forEach { item in
--            let button = makeTextButton(title: item.title, titleColor: item.videoId == videoId ? .systemBlue : .label)
--            button.contentHorizontalAlignment = .left
--            button.addAction(UIAction { [weak self] _ in
--                self?.selectVideo(item)
--            }, for: .touchUpInside)
--            stack.addArrangedSubview(button)
-+        let contentStack = makeScrollableListSheet(title: "영상 목록", in: panel)
-+        if lessonVideos.isEmpty {
-+            contentStack.addArrangedSubview(makeInfoLabel("영상 목록이 없습니다."))
-+        } else {
-+            lessonVideos.forEach { item in
-+                let isCurrent = item.videoId == videoId
-+                let subtitle = isCurrent ? "현재 재생 중" : "탭하여 영상 재생"
-+                let row = makeListCard(title: item.title, subtitle: subtitle, isCurrent: isCurrent, isEnabled: true)
-+                row.addAction(UIAction { [weak self] _ in
-+                    self?.selectVideo(item)
-+                }, for: .touchUpInside)
-+                contentStack.addArrangedSubview(row)
-+            }
-         }
--        presentSheet(overlay: overlay, panel: panel)
-+        presentListSheet(overlay: overlay, panel: panel)
-     }
- 
-     @objc private func lessonListTapped() {
-         dismissActiveOverlay(animated: false)
-         let overlay = makeDimmingOverlay()
-         let panel = makeRoundedPanel()
--        let stack = makeSimpleSheet(title: "강의 목록", in: panel)
--        if lessonList.isEmpty { stack.addArrangedSubview(makeInfoLabel("강의 목록이 없습니다.")) }
--        lessonList.forEach { item in
--            let title = item.canAccess ? "\(item.date) \(item.title) · 영상 \(item.videosCount)개" : "\(item.date) \(item.title) · 출결 확인 후 시청 가능"
--            let button = makeTextButton(title: title, titleColor: item.canAccess ? .label : .secondaryLabel)
--            button.contentHorizontalAlignment = .left
--            button.isEnabled = item.canAccess && !item.firstVideoId.isEmpty
--            button.addAction(UIAction { [weak self] _ in
--                self?.selectLesson(item)
--            }, for: .touchUpInside)
--            stack.addArrangedSubview(button)
-+        let contentStack = makeScrollableListSheet(title: "강의 목록", in: panel)
-+        if lessonList.isEmpty {
-+            contentStack.addArrangedSubview(makeInfoLabel("강의 목록이 없습니다."))
-+        } else {
-+            lessonList.forEach { item in
-+                let isCurrent = item.id == currentLessonId
-+                let subtitle = item.canAccess
-+                    ? "\(item.date) · 영상 \(item.videosCount)개"
-+                    : "\(item.date) · 출결 확인 후 시청 가능"
-+                let row = makeListCard(title: item.title, subtitle: subtitle, isCurrent: isCurrent, isEnabled: item.canAccess && !item.firstVideoId.isEmpty)
-+                row.addAction(UIAction { [weak self] _ in
-+                    self?.selectLesson(item)
-+                }, for: .touchUpInside)
-+                contentStack.addArrangedSubview(row)
-+            }
-         }
--        presentSheet(overlay: overlay, panel: panel)
-+        presentListSheet(overlay: overlay, panel: panel)
-+    }
-+
-+    private func makeScrollableListSheet(title: String, in panel: UIView) -> UIStackView {
-+        let titleLabel = makePanelTitle(title)
-+        let closeButton = makeTextButton(title: "닫기", titleColor: .secondaryLabel)
-+        closeButton.addTarget(self, action: #selector(dismissOverlayTapped), for: .touchUpInside)
-+
-+        let headerStack = UIStackView(arrangedSubviews: [titleLabel, closeButton])
-+        headerStack.translatesAutoresizingMaskIntoConstraints = false
-+        headerStack.axis = .horizontal
-+        headerStack.alignment = .center
-+        headerStack.distribution = .equalSpacing
-+
-+        let scrollView = UIScrollView()
-+        scrollView.translatesAutoresizingMaskIntoConstraints = false
-+        scrollView.alwaysBounceVertical = true
-+        scrollView.showsVerticalScrollIndicator = true
-+        scrollView.contentInset = UIEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)
-+
-+        let contentStack = UIStackView()
-+        contentStack.translatesAutoresizingMaskIntoConstraints = false
-+        contentStack.axis = .vertical
-+        contentStack.spacing = 10
-+        scrollView.addSubview(contentStack)
-+
-+        panel.addSubview(headerStack)
-+        panel.addSubview(scrollView)
-+
-+        NSLayoutConstraint.activate([
-+            headerStack.topAnchor.constraint(equalTo: panel.topAnchor, constant: 18),
-+            headerStack.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 20),
-+            headerStack.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -20),
-+
-+            scrollView.topAnchor.constraint(equalTo: headerStack.bottomAnchor, constant: 14),
-+            scrollView.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 14),
-+            scrollView.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -14),
-+            scrollView.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -16),
-+
-+            contentStack.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-+            contentStack.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-+            contentStack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-+            contentStack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-+            contentStack.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
-+        ])
-+
-+        return contentStack
-+    }
-+
-+    private func makeListCard(title: String, subtitle: String, isCurrent: Bool, isEnabled: Bool) -> UIControl {
-+        let row = UIControl()
-+        row.translatesAutoresizingMaskIntoConstraints = false
-+        row.backgroundColor = isCurrent ? UIColor.systemBlue.withAlphaComponent(0.10) : UIColor.systemBackground
-+        row.layer.cornerRadius = 16
-+        row.layer.cornerCurve = .continuous
-+        row.layer.borderWidth = isCurrent ? 1.5 : 1
-+        row.layer.borderColor = (isCurrent ? UIColor.systemBlue : UIColor.separator).cgColor
-+        row.clipsToBounds = true
-+        row.isEnabled = isEnabled
-+        row.alpha = isEnabled ? 1 : 0.45
-+        row.accessibilityTraits = isEnabled ? [.button] : [.button, .notEnabled]
-+        row.accessibilityLabel = "\(title), \(subtitle)\(isCurrent ? ", 현재 재생 중" : "")"
-+
-+        let titleLabel = UILabel()
-+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-+        titleLabel.text = title
-+        titleLabel.textColor = isCurrent ? .systemBlue : .label
-+        titleLabel.font = .systemFont(ofSize: 16, weight: .semibold)
-+        titleLabel.numberOfLines = 2
-+        titleLabel.lineBreakMode = .byTruncatingTail
-+
-+        let subtitleLabel = UILabel()
-+        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-+        subtitleLabel.text = subtitle
-+        subtitleLabel.textColor = .secondaryLabel
-+        subtitleLabel.font = .systemFont(ofSize: 13, weight: .medium)
-+        subtitleLabel.numberOfLines = 1
-+
-+        let checkLabel = UILabel()
-+        checkLabel.translatesAutoresizingMaskIntoConstraints = false
-+        checkLabel.text = isCurrent ? "✓" : ""
-+        checkLabel.textColor = .white
-+        checkLabel.font = .boldSystemFont(ofSize: 14)
-+        checkLabel.textAlignment = .center
-+        checkLabel.backgroundColor = isCurrent ? .systemBlue : .clear
-+        checkLabel.layer.cornerRadius = 11
-+        checkLabel.clipsToBounds = true
-+
-+        row.addSubview(titleLabel)
-+        row.addSubview(subtitleLabel)
-+        row.addSubview(checkLabel)
-+
-+        NSLayoutConstraint.activate([
-+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 74),
-+            titleLabel.topAnchor.constraint(equalTo: row.topAnchor, constant: 14),
-+            titleLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
-+            titleLabel.trailingAnchor.constraint(equalTo: checkLabel.leadingAnchor, constant: -12),
-+            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 5),
-+            subtitleLabel.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
-+            subtitleLabel.trailingAnchor.constraint(equalTo: titleLabel.trailingAnchor),
-+            subtitleLabel.bottomAnchor.constraint(lessThanOrEqualTo: row.bottomAnchor, constant: -14),
-+            checkLabel.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -16),
-+            checkLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-+            checkLabel.widthAnchor.constraint(equalToConstant: 22),
-+            checkLabel.heightAnchor.constraint(equalToConstant: 22)
-+        ])
-+
-+        return row
-+    }
-+
-+    private func presentListSheet(overlay: UIView, panel: UIView) {
-+        view.addSubview(overlay)
-+        overlay.addSubview(panel)
-+        activeOverlayView = overlay
-+        NSLayoutConstraint.activate([
-+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
-+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-+            panel.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 12),
-+            panel.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12),
-+            panel.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
-+            panel.heightAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.heightAnchor, multiplier: 0.78),
-+            panel.heightAnchor.constraint(greaterThanOrEqualToConstant: 180)
-+        ])
-+        animateOverlayIn(overlay: overlay, panel: panel)
-     }
- 
-     private func selectVideo(_ item: NativeLessonVideo) {
-         videoId = item.videoId
-         startSeconds = 0
-         latestPlayTime = 0
-         memos = []
-         onVideoSelected?(["id": item.id, "videoId": item.videoId, "youtubeVideoId": item.videoId])
-         dismissActiveOverlay(animated: true)
-         loadVideo()
-     }
- 
-     private func selectLesson(_ item: NativeLessonItem) {
-         guard item.canAccess, !item.firstVideoId.isEmpty else { return }
-         currentLessonId = item.id
-         videoId = item.firstVideoId
-         startSeconds = 0
-         latestPlayTime = 0
-         memos = []
-         onLessonSelected?(["lessonId": item.id, "videoId": item.firstVideoId])
-         dismissActiveOverlay(animated: true)
-         loadVideo()
-     }
- 
-     private func makeSimpleSheet(title: String, in panel: UIView) -> UIStackView {
-diff --git a/src/components/messenger/ChatRoomList.jsx b/src/components/messenger/ChatRoomList.jsx
-index 74554274bfa248e394d8eb5d790837c3aca8a1b6..43f4f503870667093f515aedc624ef6c3858851b 100644
---- a/src/components/messenger/ChatRoomList.jsx
-+++ b/src/components/messenger/ChatRoomList.jsx
-@@ -18,57 +18,65 @@ const normalizeRoomDate = (value) => {
- 
- const formatRoomTime = (room) => {
-     const date = normalizeRoomDate(room?.lastMessageAt || room?.updatedAt || room?.createdAt);
-     if (!date) return '';
-     return date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
- };
- 
- const getUnreadCount = (room, myUid) => {
-     const direct = Number(room?.unreadCount || room?.unreadMessageCount || room?.unread || 0);
-     if (direct > 0) return direct;
-     const perUser = room?.unreadCounts || room?.unreadByUser || room?.unreadByParticipant || {};
-     const keyed = Number(perUser?.[myUid] || 0);
-     return keyed > 0 ? keyed : 0;
- };
- 
- const getRoomPreview = (room) => room?.lastMessageText || room?.lastMessage || room?.message || '대화 내역이 없습니다.';
- 
- export default function ChatRoomList({
-     rooms = [],
-     selectedRoomId = null,
-     onSelectRoom,
-     myUid,
-     contextData = {},
-     mobile = false,
-     title = '상담 채팅방',
-+    loading = false,
-+    error = false,
- }) {
-     return (
-         <div className={`${mobile ? 'h-full border-0 rounded-none' : 'border rounded-lg'} overflow-hidden bg-white flex flex-col`}>
-             {title ? <div className={`${mobile ? 'px-4 py-3' : 'px-3 py-2'} border-b text-sm font-semibold text-gray-600`}>{title}</div> : null}
-             <ul className={mobile ? 'min-h-0 flex-1 overflow-y-auto' : 'max-h-[420px] overflow-y-auto'}>
--                {rooms.length === 0 && (
--                    <li className="px-3 py-6 text-sm text-gray-400">생성된 채팅방이 없습니다.</li>
-+                {loading && (
-+                    <li className="px-3 py-6 text-sm text-gray-500">대화 목록을 불러오는 중입니다...</li>
-+                )}
-+                {!loading && error && (
-+                    <li className="px-3 py-6 text-sm text-red-500">대화 목록을 불러오지 못했습니다.</li>
-+                )}
-+                {!loading && !error && rooms.length === 0 && (
-+                    <li className="px-3 py-6 text-sm text-gray-400">아직 대화가 없습니다.</li>
-                 )}
-                 {rooms.map((room) => {
-                     const active = room.id === selectedRoomId;
-                     const counterpartName = getChatRoomDisplayTitle(room, myUid, contextData);
-                     const unreadCount = getUnreadCount(room, myUid);
-                     return (
-                         <li key={room.id}>
-                             <button
-                                 type="button"
-                                 onClick={() => onSelectRoom(room)}
-                                 className={`w-full text-left px-3 py-3 border-b transition ${
-                                     active ? 'bg-green-50' : 'hover:bg-gray-50'
-                                 }`}
-                             >
-                                 <div className="flex items-start justify-between gap-3">
-                                     <span className={`${mobile ? 'text-sm font-semibold text-gray-900' : 'text-sm font-medium text-gray-700'} truncate`}>{counterpartName}</span>
-                                     <span className="text-[11px] text-gray-400 shrink-0">{mobile ? formatRoomTime(room) : (room.roomType || room.channel || room.type || 'individual')}</span>
-                                 </div>
-                                 <div className="mt-1 flex items-center justify-between gap-3">
-                                     <p className="min-w-0 flex-1 truncate text-xs text-gray-500">{getRoomPreview(room)}</p>
-                                     {unreadCount > 0 && <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
-                                 </div>
-                             </button>
-                         </li>
-                     );
-diff --git a/src/components/messenger/InternalMessengerPanel.jsx b/src/components/messenger/InternalMessengerPanel.jsx
-index c1565dc1a3e6c2c8724fb30105538bc6c24f3577..3e40240c254c6b7847862b11cde6de709753ee98 100644
---- a/src/components/messenger/InternalMessengerPanel.jsx
-+++ b/src/components/messenger/InternalMessengerPanel.jsx
-@@ -17,50 +17,52 @@ import {
-     groupStudentTargetsByClass,
-     splitStudentTargetsByStatus,
-     getChatRoomDisplayTitle,
- } from './messengerTargets';
- 
- export default function InternalMessengerPanel({
-     userId,
-     userRole,
-     students = [],
-     parents = [],
-     classes = [],
-     mobileMessengerOnly = false,
-     profileDocId = '',
- }) {
-     const [rooms, setRooms] = useState([]);
-     const [selectedRoom, setSelectedRoom] = useState(null);
-     const [messages, setMessages] = useState([]);
-     const [, setOptimisticByRoom] = useState({});
-     const [targetUid, setTargetUid] = useState('');
-     const [broadcastText, setBroadcastText] = useState('');
-     const [statusMessage, setStatusMessage] = useState('');
-     const [selectedTargetUids, setSelectedTargetUids] = useState([]);
-     const [studentSearchQuery, setStudentSearchQuery] = useState('');
-     const [fallbackStudents, setFallbackStudents] = useState([]);
-     const [fallbackParents, setFallbackParents] = useState([]);
-+    const [roomsLoading, setRoomsLoading] = useState(false);
-+    const [roomsError, setRoomsError] = useState(false);
- 
+     const handleSocialLogin = async (providerName) => {
+         if (providerName === 'google') return signInWithGoogle();
+         if (providerName === 'kakao') return redirectToKakao();
+         if (providerName === 'naver') return redirectToNaver();
+         throw new Error('지원되지 않는 소셜 로그인입니다.');
+     };
+     
      useEffect(() => {
-         if (Array.isArray(students) && students.length > 0 && Array.isArray(parents) && parents.length > 0) {
-             setFallbackStudents([]);
-             setFallbackParents([]);
-             return undefined;
-         }
-         if (!isStaffOrTeachingRole(userRole)) return undefined;
+         if (loading) return;
+         if (!user) return;
  
-         let mounted = true;
-         Promise.all([
-             Array.isArray(students) && students.length > 0
-                 ? Promise.resolve(null)
-                 : getDocs(query(collection(db, 'users'), where('role', '==', 'student'))),
-             Array.isArray(parents) && parents.length > 0
-                 ? Promise.resolve(null)
-                 : getDocs(query(collection(db, 'users'), where('role', '==', 'parent'))),
-         ]).then(([studentSnapshot, parentSnapshot]) => {
-             if (!mounted) return;
-             setFallbackStudents(studentSnapshot ? studentSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })) : []);
-             setFallbackParents(parentSnapshot ? parentSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })) : []);
-         }).catch((error) => {
-             console.error('[internal-messenger] target fallback query failed', error);
-             if (mounted) {
-                 setFallbackStudents([]);
-@@ -101,52 +103,60 @@ export default function InternalMessengerPanel({
-     }, [normalizedStudentQuery, targetOptions]);
-         
-     const { active: activeStudentTargets, withdrawn: withdrawnStudentTargets } = useMemo(() => (
-         splitStudentTargetsByStatus(filteredTargets)
-     ), [filteredTargets]);
+         if ((isParentRole(role) || isStudentRole(role)) && userProfile?.deletionAccessBlocked) return;
  
-     const studentSections = useMemo(() => (
-         groupStudentTargetsByClass(activeStudentTargets, classes)
-     ), [activeStudentTargets, classes]);
- 
-     const parentTargets = useMemo(() => (
-         filteredTargets
-             .filter((target) => target.role === 'parent')
-             .sort((left, right) => String(left.displayName || '').localeCompare(String(right.displayName || ''), 'ko'))
-     ), [filteredTargets]);
- 
-     const roomDisplayContext = useMemo(() => ({ students: effectiveStudents, parents: effectiveParents }), [effectiveStudents, effectiveParents]);
- 
-     const selectedRoomResolved = useMemo(() => {
-         if (!selectedRoom?.id) return null;
-         return rooms.find((room) => room.id === selectedRoom.id) || selectedRoom;
-     }, [rooms, selectedRoom]);
- 
-     useEffect(() => {
-         if (!isStaffOrTeachingRole(userRole) || !userId) return () => {};
--        return subscribeInternalChatRooms(userId, setRooms, (error) => {
-+        setRoomsLoading(true);
-+        setRoomsError(false);
-+        return subscribeInternalChatRooms(userId, (nextRooms) => {
-+            setRooms(nextRooms);
-+            setRoomsLoading(false);
-+            setRoomsError(false);
-+        }, (error) => {
-             console.error('[internal-messenger] room subscribe failed', error);
-+            setRoomsLoading(false);
-+            setRoomsError(true);
-         }, { profileDocId });
-     }, [profileDocId, userId, userRole]);
- 
-     useEffect(() => {
-         if (!selectedRoom?.id) {
-             setMessages([]);
-             return () => {};
-         }
- 
-         return subscribeChatMessages(selectedRoom.id, (serverMessages) => {
-             const roomId = selectedRoom.id;
-             const snapshotAt = Date.now();
-             let mergedMessages = serverMessages;
-             setOptimisticByRoom((prev) => {
-                 const optimisticMessages = Array.isArray(prev[roomId]) ? prev[roomId] : [];
-                 const unresolved = optimisticMessages.filter((tempMessage) => {
-                     if (tempMessage.failed) return true;
-                     return !serverMessages.some((serverMessage) => (
-                         serverMessage?.clientTempId
-                             ? serverMessage.clientTempId === tempMessage.id
-                             : (
-                                 serverMessage?.senderId === tempMessage.senderId
-                                 && String(serverMessage?.text || '') === String(tempMessage.text || '')
-                                 && Math.abs(
-                                     new Date(serverMessage?.createdAt?.toDate?.() || serverMessage?.createdAt || 0).getTime()
-@@ -456,50 +466,52 @@ export default function InternalMessengerPanel({
-                     <div className="min-h-0 flex-1 overflow-hidden [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
-                         <ChatMessagePane
-                             room={selectedRoomResolved}
-                             messages={messages}
-                             myUid={userId}
-                             onSend={handleSendMessage}
-                             onRetryMessage={handleRetryMessage}
-                             contextData={roomDisplayContext}
-                             mobileCompact
-                         />
-                     </div>
+         const redirectPath = getDefaultRouteForRole(role) || '/home';
+         navigate(redirectPath, { replace: true });
+     }, [loading, navigate, role, user, userProfile?.deletionAccessBlocked]);
+@@ -53,45 +54,48 @@ function LoginRoute() {
+                     <p className="text-base font-bold text-gray-900">{DELETION_REQUESTED_MESSAGE}</p>
+                     <button
+                         type="button"
+                         onClick={async () => {
+                             await logout();
+                             navigate('/login', { replace: true });
+                         }}
+                         className="mt-5 w-full rounded-xl bg-[#455fab] px-4 py-3 text-sm font-bold text-white"
+                     >
+                         확인
+                     </button>
                  </div>
-             );
-         }
- 
-         return (
-             <div className="h-full min-h-0 overflow-hidden bg-white [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
-                 <ChatRoomList
-                     rooms={rooms}
-                     selectedRoomId={selectedRoom?.id || null}
-                     onSelectRoom={setSelectedRoom}
-                     myUid={userId}
-                     contextData={roomDisplayContext}
-                     mobile
-                     title=""
-+                    loading={roomsLoading}
-+                    error={roomsError}
-                 />
              </div>
          );
      }
  
+     return <LoginPage onSocialLogin={handleSocialLogin} onEmailLogin={signInWithReviewEmail} />;
+ }
+ 
+ function AppRouter() {
      return (
-         /* ✅ 그리드 높이를 뷰포트 기준으로 꽉 채우도록 설정 (h-[calc(...)]) */
-         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[calc(100vh-130px)] min-h-[600px]">
-             
-             {/* 1열: 실시간 대화창 (강제 높이 확장) */}
-             {/* ✅ [&>div]:!h-full & [&>div]:!max-h-none 를 사용하여 ChatMessagePane 내부의 420px 고정 높이를 강제로 무시하고 세로로 꽉 채웁니다. */}
-             <div className="lg:col-span-2 h-full rounded-xl shadow-sm overflow-hidden [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0 border border-gray-200">
-                 <ChatMessagePane
-                     room={selectedRoomResolved}
-                     messages={messages}
-                     myUid={userId}
-                     onSend={handleSendMessage}
-                     onRetryMessage={handleRetryMessage}
-                     contextData={roomDisplayContext}
-                 />
-             </div>
+         <Routes>
+             <Route path="/auth/callback" element={<SocialCallback />} />
+             <Route path="/login" element={<LoginRoute />} />
+             <Route path="/student/login" element={<StudentLogin />} />
++            <Route path="/privacy" element={<PublicLegalPage type="privacy" />} />
++            <Route path="/terms" element={<PublicLegalPage type="terms" />} />
++            <Route path="/account-delete" element={<PublicLegalPage type="accountDelete" />} />
+             <Route path="/student/home" element={<Navigate to="/home" replace />} />
+             <Route path="/parent/home" element={<Navigate to="/home" replace />} />
+             <Route path="/signup" element={<Navigate to="/signup/invite" replace />} />
+             <Route path="/signup/invite" element={<InviteSignupPage />} />
+             <Route path="/*" element={<AuthGate />} />
+         </Routes>
+     );
+ }
  
-             {/* 2열: 컨트롤 카드 및 리스트 (상하단 분리) */}
-             <div className="lg:col-span-1 flex flex-col gap-4 h-full min-h-0">
-                 
-@@ -630,32 +642,34 @@ export default function InternalMessengerPanel({
-                         )}
-                     </div>
- 
-                     <div className="flex flex-col gap-2">
-                         <textarea
-                             value={broadcastText}
-                             onChange={(event) => setBroadcastText(event.target.value)}
-                             placeholder="선택 대상 fan-out 메시지 입력"
-                             rows={2}
-                             className="border rounded px-3 py-2 text-xs w-full resize-none focus:outline-none focus:ring-1 focus:ring-[#455fab]"
-                         />
-                         <button type="button" onClick={handleBroadcastToSelected} className="w-full py-2 text-xs rounded border border-gray-300 bg-gray-50 hover:bg-gray-100 font-semibold transition-colors">선택 대상 일괄 발송</button>
-                     </div>
-                     {statusMessage && <p className="text-[11px] text-gray-500 italic">{statusMessage}</p>}
-                 </div>
- 
-                 {/* 2열-하단: 상담 채팅방 목록 카드 (남은 높이 100% 꽉 채우기) */}
-                 {/* ✅ flex-1과 min-h-0 을 주어 상단 카드를 제외한 모든 높이를 차지하게 하고, 내부 스크롤 강제 활성화 */}
-                 <div className="bg-white rounded-xl shadow border border-gray-200 p-1 flex-1 min-h-0 overflow-y-auto custom-scrollbar [&>div]:!h-full [&>div]:!max-h-none [&>div]:!border-0">
-                     <ChatRoomList
-                         rooms={rooms}
-                         selectedRoomId={selectedRoom?.id || null}
-                         onSelectRoom={setSelectedRoom}
-                         myUid={userId}
-                         contextData={roomDisplayContext}
-+                        loading={roomsLoading}
-+                        error={roomsError}
-                     />
-                 </div>
-                 
-             </div>
-         </div>
+ export default function App() {
+     return (
+         <BrowserRouter>
+             <UserProvider>
+                 <AuthProvider>
+                     <AppRouter />
+                 </AuthProvider>
+             </UserProvider>
+         </BrowserRouter>
      );
  }
 \ No newline at end of file
-diff --git a/src/domain/messenger/messenger.service.js b/src/domain/messenger/messenger.service.js
-index aa94143ff959461f804f78721722c60a18a32709..e0850c58dfece113bb5cb47f9ecd4cc3c62c9ee8 100644
---- a/src/domain/messenger/messenger.service.js
-+++ b/src/domain/messenger/messenger.service.js
-@@ -234,157 +234,165 @@ export const sendMessageDirect = async ({
-         acceptedAt: now,
-         lastMessageText: text || fallbackLastMessage,
-         lastMessageSenderId: senderMeta?.senderId || null,
-     };
+diff --git a/src/components/messenger/messengerTargets.js b/src/components/messenger/messengerTargets.js
+index 7bb1a8b037762b7375372e7046b1eae3a716a8ba..c5076ce723b42732d6cf858028490afd4ffdf5ec 100644
+--- a/src/components/messenger/messengerTargets.js
++++ b/src/components/messenger/messengerTargets.js
+@@ -36,54 +36,63 @@ const getStudentClassIds = (student) => {
+     if (Array.isArray(student?.classIds)) return student.classIds.map(String);
+     if (Array.isArray(student?.classes)) return student.classes.map(String);
+     return [];
  };
  
- export const broadcastChatMessage = async ({
-     text,
-     targetUserIds = [],
-     targetType = 'custom',
-     targetClassIds = [],
- }) => {
-     const result = await broadcastChatMessageCallable({
-         text,
-         targetUserIds,
-         targetType,
-         targetClassIds,
-     });
+ const pickRepresentativeClass = (student, classMap) => {
+     const classIds = getStudentClassIds(student);
+     if (!classIds.length) return null;
  
-     return result?.data || null;
+     const linkedClasses = classIds
+         .map((classId) => classMap.get(String(classId)) || null)
+         .filter(Boolean);
+ 
+     if (!linkedClasses.length) return null;
+ 
+     const ongoing = linkedClasses.find((classDoc) => !isClosedClass(classDoc));
+     return ongoing || linkedClasses[0] || null;
  };
  
- const getTime = (value) => (typeof value?.toDate === 'function' ? value.toDate() : new Date(value || 0)).getTime() || 0;
- 
- const sortInternalRooms = (rooms = []) => [...rooms]
--    .filter((room) => room?.internalOnly === true)
-+    .filter((room) => room?.internalOnly === true || room?.fromUserChatRoomIndex === true)
-     .sort((a, b) => getTime(b?.lastMessageAt || b?.updatedAt || b?.createdAt) - getTime(a?.lastMessageAt || a?.updatedAt || a?.createdAt))
-     .slice(0, 100);
- 
- const mergeRoomWithIndex = (room, index = {}) => ({
-     ...(room || {}),
-+    fromUserChatRoomIndex: Boolean(index?.id || index?.roomId),
-     id: room?.id || index?.roomId || index?.id || '',
-     roomId: room?.roomId || index?.roomId || index?.id || '',
-     lastMessageText: room?.lastMessageText || index?.lastMessageText || index?.lastMessage || '',
-     lastMessage: room?.lastMessage || index?.lastMessage || '',
-     lastMessageAt: room?.lastMessageAt || index?.lastMessageAt || null,
-     lastSenderId: room?.lastSenderId || index?.lastSenderId || room?.lastMessageSenderId || '',
-     updatedAt: room?.updatedAt || index?.updatedAt || null,
-+    participantIds: Array.isArray(room?.participantIds) && room.participantIds.length > 0
-+        ? room.participantIds
-+        : uniqueStrings([index?.participantIds || [], index?.counterpartUid, index?.staffAuthUid, index?.teacherAuthUid]),
-+    internalOnly: room?.internalOnly === true || Boolean(index?.id || index?.roomId),
- });
- 
- const fetchUserAuthIndexProfile = async (authUid) => {
-     const currentAuthUid = normalizeString(authUid);
-     if (!currentAuthUid) return { userDocId: '', profile: {} };
-     const indexSnap = await getDoc(doc(db, 'userAuthIndex', currentAuthUid));
-     const userDocId = indexSnap.exists() ? normalizeString(indexSnap.data()?.userDocId) : '';
-     if (!userDocId) return { userDocId: '', profile: {} };
-     const userSnap = await getDoc(doc(db, 'users', userDocId));
-     return { userDocId, profile: userSnap.exists() ? userSnap.data() || {} : {} };
+ const appendParentSuffix = (name) => {
+     const normalized = normalizeText(name);
+     if (!normalized) return '';
+     return normalized.endsWith('학부모') ? normalized : `${normalized} 학부모`;
  };
  
--const fetchRoomsForInternalIndexes = async (indexes = []) => {
--    const rooms = await Promise.all(indexes.map(async (index) => {
--        const roomId = normalizeString(index?.roomId || index?.id);
--        if (!roomId) return null;
--        const roomSnap = await getDoc(doc(db, 'chatRooms', roomId));
--        return mergeRoomWithIndex(roomSnap.exists() ? { id: roomSnap.id, ...roomSnap.data() } : { id: roomId }, index);
--    }));
--    return rooms.filter(Boolean);
--};
-+const fetchRoomsForInternalIndexes = async (indexes = []) => (
-+    indexes
-+        .map((index) => {
-+            const roomId = normalizeString(index?.roomId || index?.id);
-+            if (!roomId) return null;
-+            return mergeRoomWithIndex({ id: roomId }, index);
-+        })
-+        .filter(Boolean)
-+);
- 
- const fetchInternalUserChatRoomIndexes = async (keys = [], debug = {}) => {
-     const indexesById = new Map();
-     const pathsTried = [];
-     for (const key of keys) {
-         const path = `userChatRooms/${key}/rooms`;
-         pathsTried.push(path);
-         try {
-             const snap = await getDocs(query(collection(db, 'userChatRooms', key, 'rooms')));
-             snap.docs.forEach((docSnapshot) => indexesById.set(docSnapshot.id, { id: docSnapshot.id, ...docSnapshot.data() }));
-         } catch (error) {
-             console.warn('[staff messenger] userChatRooms read failed; continuing fallback', { path, code: error?.code, message: error?.message });
-         }
-     }
-     if (process.env.NODE_ENV === 'development') {
-         console.log('[staff messenger] userChatRooms paths tried', { ...debug, pathsTried, matchedCount: indexesById.size });
-     }
-     return { indexes: Array.from(indexesById.values()), pathsTried };
- };
- 
- const fetchInternalFallbackRooms = async (participantKeyCandidates = [], debug = {}) => {
-     const chunk = uniqueStrings(participantKeyCandidates).slice(0, 10);
-     if (!chunk.length) return [];
-     try {
-         const snap = await getDocs(query(
-             collection(db, 'chatRooms'),
-             where('participantIds', 'array-contains-any', chunk),
-         ));
-         const rooms = snap.docs.map(normalizeRoom);
-         if (process.env.NODE_ENV === 'development') {
-             console.log('[staff messenger] chatRooms fallback matched count', { ...debug, count: rooms.length });
-         }
-         return rooms;
-     } catch (error) {
-         console.warn('[staff messenger] chatRooms fallback failed', { ...debug, code: error?.code, message: error?.message });
-         return [];
-     }
- };
- 
- export const subscribeInternalChatRooms = (currentAuthUid, onChange, onError = null, options = {}) => {
-     const authUid = normalizeString(auth.currentUser?.uid || currentAuthUid);
-     if (!authUid) return () => {};
- 
-     let cancelled = false;
- 
-     const loadRooms = async () => {
-         try {
--            const { userDocId: indexedUserDocId, profile } = await fetchUserAuthIndexProfile(authUid);
--            const profileDocId = normalizeString(options.profileDocId || indexedUserDocId);
--            const userAuthIndexUserDocId = indexedUserDocId;
--            const participantKeyCandidates = uniqueStrings([
--                authUid,
--                profileDocId,
--                userAuthIndexUserDocId,
--                profile?.uid,
--                profile?.authUid,
--                profile?.userUid,
--                profile?.id,
--            ]).slice(0, 10);
--            const debug = { authUid, profileDocId, userAuthIndexUserDocId, participantKeyCandidates };
-+            const initialProfileDocId = normalizeString(options.profileDocId);
-+            const initialUserChatRoomKeys = uniqueStrings([authUid, initialProfileDocId]);
-+            const initialDebug = { authUid, profileDocId: initialProfileDocId, userAuthIndexUserDocId: '', participantKeyCandidates: initialUserChatRoomKeys };
- 
-             if (process.env.NODE_ENV === 'development') {
--                console.log('[staff messenger] resolver identity', debug);
-+                console.log('[staff messenger] resolver identity', initialDebug);
-             }
- 
--            const userChatRoomKeys = uniqueStrings([authUid, profileDocId, userAuthIndexUserDocId]);
--            const { indexes } = await fetchInternalUserChatRoomIndexes(userChatRoomKeys, debug);
-+            const { indexes } = await fetchInternalUserChatRoomIndexes(initialUserChatRoomKeys, initialDebug);
-             const indexedRooms = await fetchRoomsForInternalIndexes(indexes);
--            const fallbackRooms = await fetchInternalFallbackRooms(participantKeyCandidates, debug);
--            const roomsById = new Map();
--            indexedRooms.forEach((room) => roomsById.set(room.id, room));
--            fallbackRooms.forEach((room) => roomsById.set(room.id, mergeRoomWithIndex(room, roomsById.get(room.id))));
--            const finalRooms = sortInternalRooms(Array.from(roomsById.values()));
-+            let finalRooms = sortInternalRooms(indexedRooms);
++const appendStudentSuffix = (name) => {
++    const normalized = normalizeText(name);
++    if (!normalized) return '';
++    return normalized.endsWith('학생') ? normalized : `${normalized} 학생`;
++};
 +
-+            if (finalRooms.length === 0) {
-+                const { userDocId: indexedUserDocId, profile } = await fetchUserAuthIndexProfile(authUid);
-+                const profileDocId = normalizeString(options.profileDocId || indexedUserDocId);
-+                const userAuthIndexUserDocId = indexedUserDocId;
-+                const participantKeyCandidates = uniqueStrings([
-+                    authUid,
-+                    profileDocId,
-+                    userAuthIndexUserDocId,
-+                    profile?.uid,
-+                    profile?.authUid,
-+                    profile?.userUid,
-+                    profile?.id,
-+                ]).slice(0, 10);
-+                const fallbackDebug = { authUid, profileDocId, userAuthIndexUserDocId, participantKeyCandidates };
-+                const fallbackRooms = await fetchInternalFallbackRooms(participantKeyCandidates, fallbackDebug);
-+                finalRooms = sortInternalRooms(fallbackRooms);
-+            }
++const isStaffRole = (role) => ['admin', 'staff', 'teacher', 'teaching', 'operator', '운영자', '강사'].includes(lower(role));
++const isFallbackName = (name) => ['운영자', '이름 미등록', '이름 미등록 학생', '이름 미등록 학부모', '이름 미등록 학생 학부모'].includes(normalizeText(name));
++
  
-             if (process.env.NODE_ENV === 'development') {
-                 console.log('[staff messenger] room list count', { ...debug, count: finalRooms.length });
-                 console.log('[staff messenger] rooms missing lastMessageText count', { ...debug, count: finalRooms.filter((room) => !room?.lastMessageText).length });
+ const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
+ const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
+-const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName);
++const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName) || normalizeText(user?.parentName);
+ const isExcludedStudent = (student = {}) => (
+     student?.active === false
+     || lower(student?.status) === 'withdrawn'
+     || lower(student?.status) === 'deletion_requested'
+ );
+ const getParentRefsFromStudent = (student = {}) => {
+     const refs = [];
+     [student?.parentId, student?.parentUid, student?.parentDocId].filter(Boolean).forEach((id) => refs.push({ id: String(id), authUid: String(id) }));
+     getArrayField(student?.parentIds).forEach((id) => refs.push({ id, authUid: id }));
+     getArrayField(student?.parentUids).forEach((id) => refs.push({ id, authUid: id }));
+     if (Array.isArray(student?.parents)) {
+         student.parents.forEach((parent) => {
+             if (typeof parent === 'string') refs.push({ id: parent, authUid: parent });
+             else if (parent && typeof parent === 'object') {
+                 const authUid = getAuthUid(parent) || normalizeText(parent?.id) || normalizeText(parent?.parentId);
+                 const id = normalizeText(parent?.id) || normalizeText(parent?.parentId) || authUid;
+                 if (authUid || id) refs.push({ id, authUid: authUid || id });
              }
+         });
+     }
+     const unique = new Map();
+     refs.filter((ref) => ref.authUid || ref.id).forEach((ref) => {
+         const key = `${ref.authUid || ''}|${ref.id || ''}`;
+         if (!unique.has(key)) unique.set(key, ref);
+     });
+@@ -100,261 +109,285 @@ const getRoomParentIds = (room) => [
+     normalizeText(room?.parentUid),
+     ...getArrayField(room?.parentUids),
+ ].filter(Boolean);
  
-             if (!cancelled) onChange(finalRooms);
-         } catch (error) {
-             if (!cancelled) onError?.(error);
-         }
-     };
+ const getStudentNameFromIds = (studentIds, studentById) => (
+     studentIds.map((studentId) => studentById.get(String(studentId))).find(Boolean)?.name
+     || ''
+ );
  
-     loadRooms();
+ const isParentRole = (role) => ['parent', 'guardian', '학부모'].includes(lower(role));
  
-     return () => {
-         cancelled = true;
+ const hasParentRoomHint = (room, counterpartyUid = '') => {
+     const roleValues = room?.participantRoles && typeof room.participantRoles === 'object'
+         ? Object.values(room.participantRoles)
+         : [];
+     const counterpartyRole = counterpartyUid && room?.participantRoles
+         ? room.participantRoles[counterpartyUid]
+         : '';
+     return isParentRole(counterpartyRole)
+         || roleValues.some(isParentRole)
+         || getRoomParentIds(room).length > 0
+         || Boolean(room?.parentName);
+ };
+ 
+ const resolveParentRoomDisplayName = (room, parent, studentById) => {
+-    const studentName = normalizeText(room?.studentName)
++    const parentName = getUserName(parent);
++    if (parentName && !isFallbackName(parentName)) return appendParentSuffix(parentName);
++
++    const explicitParentName = normalizeText(room?.parentName);
++    if (explicitParentName && !isFallbackName(explicitParentName)) return appendParentSuffix(explicitParentName);
++
++    const linkedStudentIds = Array.isArray(parent?.studentIds) ? parent.studentIds.map(String) : [parent?.studentId, parent?.linkedStudentId].filter(Boolean).map(String);
++    const linkedStudentName = getStudentNameFromIds(linkedStudentIds, studentById);
++    const studentName = linkedStudentName
++        || normalizeText(room?.studentName)
+         || getStudentNameFromIds(getRoomStudentIds(room), studentById);
+-    if (studentName) return appendParentSuffix(studentName);
++    if (studentName && !isFallbackName(studentName)) return appendParentSuffix(studentName);
+ 
+-    return '이름 미등록 학생 학부모';
++    return '이름 미등록 학부모';
+ };
+ 
+ const buildUserLookups = ({ students = [], parents = [] }) => {
+     const safeStudents = Array.isArray(students) ? students : [];
+     const safeParents = Array.isArray(parents) ? parents : [];
+     const studentById = new Map();
+     const studentByAuthUid = new Map();
+     safeStudents.forEach((student) => {
+-        [student?.id, student?.studentId, student?.docId, student?.userDocId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
++        [student?.id, student?.studentId, student?.docId, student?.userDocId, student?.parentLinkedStudentId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
+         [student?.authUid, student?.uid, student?.studentAuthUid, student?.studentUid].filter(Boolean).forEach((uid) => studentByAuthUid.set(String(uid), student));
+     });
+     const parentById = new Map();
+     const parentByAuthUid = new Map();
+     safeParents.forEach((parent) => {
+-        [parent?.id, parent?.parentId, parent?.docId].filter(Boolean).forEach((id) => parentById.set(String(id), parent));
+-        [parent?.authUid, parent?.uid, parent?.parentUid].filter(Boolean).forEach((uid) => parentByAuthUid.set(String(uid), parent));
++        [parent?.id, parent?.parentId, parent?.docId, parent?.userDocId].filter(Boolean).forEach((id) => parentById.set(String(id), parent));
++        [parent?.authUid, parent?.uid, parent?.parentUid, parent?.userUid].filter(Boolean).forEach((uid) => parentByAuthUid.set(String(uid), parent));
+     });
+     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
+     return {
+         studentById,
+         studentByAuthUid,
+         parentById,
+         parentByAuthUid,
+         parentLast4Map,
      };
  };
  
- export const subscribeChatMessages = (roomId, onChange, onError = null) => {
-     if (!roomId) return () => {};
-     const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
-     if (process.env.NODE_ENV === 'development') console.log('[staff messenger] selected room id', { roomId });
  
-     const messagesQuery = query(
+ const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
+ 
+ const getStudentDisplayNameForRoom = (room, { studentById, studentByAuthUid, parentLast4Map }) => {
+     const directStudent = getRoomStudentIds(room).map((studentId) => studentById.get(String(studentId)) || studentByAuthUid.get(String(studentId))).find(Boolean)
+         || (room?.studentDocId ? studentById.get(String(room.studentDocId)) : null);
+     const directName = getUserName(directStudent) || normalizeText(room?.studentName);
+-    if (directName) return directName;
++    if (directName) return appendStudentSuffix(directName);
+ 
+     const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
+     const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
+     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
+     const roleStudentId = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
+     const roleStudent = roleStudentId ? (studentByAuthUid.get(roleStudentId) || studentById.get(String(userDocIds[roleStudentId] || ''))) : null;
+     const participantStudent = roleStudent || participantIds.map((participantId) => studentByAuthUid.get(participantId) || studentById.get(String(userDocIds[participantId] || ''))).find(Boolean);
+     const participantName = roleStudentId ? normalizeText(room?.participantNames?.[roleStudentId]) : '';
+     if (!participantStudent && participantName) return participantName;
+     if (!participantStudent) return '';
+ 
+     return getMessengerTargetDisplayName({
+         user: participantStudent,
+         role: 'student',
+         studentById,
+         parentLast4Map,
+     });
+ };
+ 
+ const getStandardRoomDisplayTitle = (room, contextData = {}) => {
+     const roomType = getRoomType(room);
+     if (!['student_teacher', 'parent_teacher', 'student_institute', 'parent_institute'].includes(roomType)) return '';
+ 
+     const { studentById, studentByAuthUid, parentById, parentByAuthUid, parentLast4Map } = buildUserLookups({
+         students: contextData.students || [],
+         parents: contextData.parents || [],
+     });
+     const studentName = getStudentDisplayNameForRoom(room, { studentById, studentByAuthUid, parentLast4Map });
+     if (roomType === 'parent_teacher' || roomType === 'parent_institute') {
+         const parentIds = getRoomParentIds(room);
++        const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
++        const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
++        const roleParentUid = Object.keys(roles).find((uid) => isParentRole(roles[uid]));
+         const parent = parentIds
+             .map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId)))
+-            .find(Boolean) || null;
+-        return studentName ? appendParentSuffix(studentName) : resolveParentRoomDisplayName(room, parent, studentById);
++            .find(Boolean)
++            || (roleParentUid ? (parentByAuthUid.get(roleParentUid) || parentById.get(roleParentUid) || parentById.get(String(userDocIds[roleParentUid] || ''))) : null)
++            || null;
++        return resolveParentRoomDisplayName({ ...room, studentName }, parent, studentById);
+     }
+     return studentName || '이름 미등록 학생';
+ };
+ 
+ const resolveCounterpartyUid = (room, currentUserId) => {
+     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
+     if (!participantIds.length) return null;
+-    return participantIds.find((uid) => uid !== String(currentUserId || '')) || participantIds[0] || null;
++    const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
++    const current = String(currentUserId || '');
++    const nonStaff = participantIds.find((uid) => uid !== current && !isStaffRole(roles[uid]));
++    if (nonStaff) return nonStaff;
++    return participantIds.find((uid) => uid !== current) || participantIds[0] || null;
+ };
+ 
+ export const getMessengerTargetDisplayName = ({
+     user,
+     role,
+     studentById = new Map(),
+     parentLast4Map = {},
+ }) => {
+     if (!user) return '';
+ 
+     if (role === 'student') {
+-        return normalizeText(user?.name)
++        const studentName = normalizeText(user?.name)
+             || normalizeText(user?.displayName)
+-            || formatStudentNameWithOptionalParentLast4(user, parentLast4Map)
+-            || '이름 미등록 학생';
++            || formatStudentNameWithOptionalParentLast4(user, parentLast4Map);
++        return studentName ? appendStudentSuffix(studentName) : '이름 미등록 학생';
+     }
+ 
+     const linkedStudentIds = Array.isArray(user?.studentIds) ? user.studentIds.map(String) : [];
+     const linkedStudent = linkedStudentIds
+         .map((studentId) => studentById.get(studentId))
+         .find(Boolean);
+ 
+     if (role === 'parent' && linkedStudent) {
+         const baseName = normalizeText(linkedStudent?.name)
+             || normalizeText(linkedStudent?.studentName)
+             || normalizeText(linkedStudent?.id);
+         if (baseName) return appendParentSuffix(baseName);
+     }
+ 
+     const directName =
+         normalizeText(user?.name)
+         || normalizeText(user?.displayName)
+         || normalizeText(user?.parentName);
+ 
+-    if (role === 'parent' && directName) return '이름 미등록 학부모';
++    if (role === 'parent' && directName) return appendParentSuffix(directName);
+     if (directName) return directName;
+ 
+     if (role === 'parent') {
+         if (process.env.NODE_ENV === 'development') {
+             console.warn('[internal-messenger] parent display name fallback', {
+                 parentId: user?.id || null,
+                 authUid: user?.authUid || null,
+             });
+         }
+         return '이름 미등록 학부모';
+     }
+ 
+     return '이름 미등록 사용자';
+ };
+ 
+ export const getChatRoomCounterparty = (
+     room,
+     currentUserId,
+     students = [],
+     parents = [],
+ ) => {
+     const counterpartyUid = resolveCounterpartyUid(room, currentUserId);
+     if (!counterpartyUid) return null;
+ 
+     const {
+         studentById,
+         studentByAuthUid,
+         parentById,
+         parentByAuthUid,
+         parentLast4Map,
+     } = buildUserLookups({ students, parents });
+ 
+     const participantRoles = room?.participantRoles || {};
+     const participantUserDocIds = room?.participantUserDocIds || {};
+     const roleHint = normalizeText(participantRoles[counterpartyUid]).toLowerCase();
++    const participantNames = room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {};
+     const userDocIdHint = normalizeText(participantUserDocIds[counterpartyUid]);
+ 
+     const parent =
+         parentByAuthUid.get(counterpartyUid)
++        || parentById.get(counterpartyUid)
+         || (userDocIdHint ? parentById.get(userDocIdHint) : null)
+         || getRoomParentIds(room).map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId))).find(Boolean)
+         || null;
+ 
+     if (hasParentRoomHint(room, counterpartyUid) || parent) {
+         return {
+             uid: counterpartyUid,
+             role: 'parent',
+             user: parent,
+             displayName: resolveParentRoomDisplayName(room, parent, studentById),
+         };
+     }
+ 
+     const student =
+         studentByAuthUid.get(counterpartyUid)
++        || studentById.get(counterpartyUid)
+         || (userDocIdHint ? studentById.get(userDocIdHint) : null)
+         || (room?.studentId ? studentById.get(String(room.studentId)) : null);
+ 
+     if (student) {
+         return {
+             uid: counterpartyUid,
+             role: 'student',
+             user: student,
+             displayName: getMessengerTargetDisplayName({
+                 user: student,
+                 role: 'student',
+                 studentById,
+                 parentLast4Map,
+             }),
+         };
+     }
+ 
+-    const hintedName = normalizeText(room?.participantNames?.[counterpartyUid]);
++    const hintedName = normalizeText(participantNames?.[counterpartyUid]);
+     const resolvedRole = roleHint || 'staff';
+     const roleLabel = STAFF_ROLE_LABEL_MAP[resolvedRole] || '담당자';
+     if (process.env.NODE_ENV === 'development') {
+         console.warn('[internal-messenger] counterparty profile unresolved', {
+             roomId: room?.id || null,
+             counterpartyUid,
+             roleHint: roleHint || null,
+             userDocIdHint: userDocIdHint || null,
+         });
+     }
+ 
+     return {
+         uid: counterpartyUid,
+         role: resolvedRole,
+         user: null,
+         displayName: hintedName || roleLabel,
+     };
+ };
+ 
+ export const getChatRoomDisplayTitle = (room, currentUserId, contextData = {}) => {
+     const standardTitle = getStandardRoomDisplayTitle(room, contextData);
+-    if (standardTitle) return standardTitle;
++    if (standardTitle) {
++        if (process.env.NODE_ENV === 'development') console.log('[internal-messenger] display name resolved', { roomId: room?.id || null, roomType: getRoomType(room), currentUserId, participantIds: Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [], finalDisplayName: standardTitle });
++        return standardTitle;
++    }
+ 
+     const counterparty = getChatRoomCounterparty(
+         room,
+         currentUserId,
+         contextData.students || [],
+         contextData.parents || [],
+     );
+ 
+     if (counterparty?.displayName) return counterparty.displayName;
+ 
+     if (process.env.NODE_ENV === 'development') {
+         console.warn('[internal-messenger] chat room title fallback used', {
+             roomId: room?.id || null,
+             currentUserId: currentUserId || null,
+         });
+     }
+     return '대화 상대 미확인';
+ };
+ 
+ export const sortMessengerTargets = (targets = []) => {
+     const rank = (role) => (role === 'student' ? 0 : 1);
+ 
+     return [...targets].sort((left, right) => {
+         const roleDiff = rank(left?.role) - rank(right?.role);
+         if (roleDiff !== 0) return roleDiff;
+diff --git a/src/pages/PublicLegalPage.jsx b/src/pages/PublicLegalPage.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..04843de8c6cbc910d37354acdaabd226c841796d
+--- /dev/null
++++ b/src/pages/PublicLegalPage.jsx
+@@ -0,0 +1,49 @@
++import React from 'react';
++import ParentLegalPage from './parent/ParentLegalPage';
++import { privacyContent } from '../content/legal/privacy';
++import { termsContent } from '../content/legal/terms';
++
++const SERVICE_NAME = '채수용 수학연구소';
++
++const accountDeleteContent = {
++  title: '계정 및 개인정보 삭제 요청 안내',
++  effectiveDate: '',
++  sections: [
++    { paragraphs: [`${SERVICE_NAME}는 이용자의 계정 및 개인정보 삭제 요청을 지원합니다.`] },
++    { title: '삭제 요청 방법', items: ['앱에서 “전체 > 계정 삭제 요청” 메뉴를 통해 요청할 수 있습니다.', '앱 이용이 어려운 경우 이메일로 삭제를 요청할 수 있습니다.'] },
++    { title: '삭제 요청 이메일', paragraphs: ['jinyun0ji@gmail.com'] },
++    { title: '이메일 요청 시 안내할 내용', items: ['가입에 사용한 이메일 주소', '학생 또는 학부모 이름', '삭제를 요청한다는 명확한 의사'] },
++    { title: '처리 기간', items: ['삭제 요청 접수 후 7일 이내 처리', '본인 확인이나 추가 정보가 필요한 경우 이메일로 연락할 수 있음'] },
++    { title: '삭제되는 정보', items: ['로그인 계정 및 인증 연결 정보', '학생 또는 학부모 프로필 정보', '학습 메모', '알림 정보', '채팅 데이터', '서비스 이용 과정에서 생성된 기타 개인정보'] },
++    { title: '보관될 수 있는 정보', items: ['관련 법령에 따라 일정 기간 보관 의무가 있는 정보는 법정 보관 기간 동안 분리 보관한 뒤 삭제', '법령상 보관 의무가 없는 정보는 삭제 절차 완료 시 삭제'] },
++    { title: '추가 안내', paragraphs: ['삭제 요청이 수업 운영, 결제 정산, 법적 보관 의무와 관련된 경우 일부 정보가 일정 기간 보관될 수 있습니다.'] },
++  ],
++};
++
++const CONTENT_BY_TYPE = {
++  privacy: privacyContent,
++  terms: termsContent,
++  accountDelete: accountDeleteContent,
++};
++
++export default function PublicLegalPage({ type }) {
++  const content = CONTENT_BY_TYPE[type];
++
++  return (
++    <main className="min-h-screen bg-slate-50 px-5 py-8 text-gray-900 sm:px-6 sm:py-12">
++      <div className="mx-auto max-w-3xl">
++        <header className="mb-6 rounded-2xl border border-slate-200 bg-white px-5 py-5 shadow-sm sm:px-7">
++          <p className="text-sm font-bold tracking-wide text-[#455fab]">{SERVICE_NAME}</p>
++          <h1 className="mt-2 text-2xl font-extrabold leading-tight text-gray-950 sm:text-3xl">{content?.title || '정책 문서'}</h1>
++          {content?.effectiveDate ? <p className="mt-3 text-sm font-medium text-gray-500">시행일: {content.effectiveDate}</p> : null}
++        </header>
++        <div className="public-legal-document [&_article]:!rounded-2xl [&_article]:!p-5 sm:[&_article]:!p-7">
++          <ParentLegalPage content={content} />
++        </div>
++        <footer className="mt-6 border-t border-slate-200 py-5 text-center text-xs text-gray-500">
++          {content?.effectiveDate ? `시행일: ${content.effectiveDate}` : '최종 수정일은 정책 변경 시 함께 고지됩니다.'}
++        </footer>
++      </div>
++    </main>
++  );
++}
+diff --git a/src/pages/parent/ParentLegalPage.jsx b/src/pages/parent/ParentLegalPage.jsx
+index 32879df7597e8158ddbfbff90394be352cdff9f6..4b741116c582e27d661221eda19267652683e49d 100644
+--- a/src/pages/parent/ParentLegalPage.jsx
++++ b/src/pages/parent/ParentLegalPage.jsx
+@@ -1,32 +1,36 @@
+ import React from 'react';
+ 
+-const renderParagraphs = (paragraphs = []) => paragraphs.map((paragraph, index) => (
+-  <p key={index} className="text-sm leading-6 text-gray-700 whitespace-pre-line">
+-    {paragraph}
+-  </p>
+-));
++const renderParagraphs = (paragraphs = []) => paragraphs.map((paragraph, index) => {
++  const text = String(paragraph || '');
++  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text.trim());
++  return (
++    <p key={index} className="text-sm leading-6 text-gray-700 whitespace-pre-line">
++      {isEmail ? <a className="font-semibold text-[#455fab] underline underline-offset-2" href={`mailto:${text.trim()}`}>{text.trim()}</a> : paragraph}
++    </p>
++  );
++});
+ 
+ const renderItems = (items = []) => (
+   <ul className="mt-3 space-y-2 pl-4 text-sm leading-6 text-gray-700 list-disc">
+     {items.map((item, index) => (
+       <li key={index} className="pl-1 whitespace-pre-line">{item}</li>
+     ))}
+   </ul>
+ );
+ 
+ const renderSubSections = (subSections = []) => subSections.map((subSection, index) => (
+   <div key={index} className="mt-4 rounded-xl bg-gray-50 border border-gray-100 p-3">
+     {subSection.title && <h4 className="text-sm font-bold text-gray-800 mb-2">{subSection.title}</h4>}
+     <div className="space-y-2">{renderParagraphs(subSection.paragraphs)}</div>
+     {Array.isArray(subSection.items) && subSection.items.length > 0 && renderItems(subSection.items)}
+   </div>
+ ));
+ 
+ const ParentLegalPage = ({ content }) => {
+   if (!content) {
+     return (
+       <section className="bg-gray-50">
+         <div className="bg-white rounded-2xl border border-gray-200 p-4 text-sm text-gray-500">
+           문서를 불러올 수 없습니다.
+         </div>
+       </section>
