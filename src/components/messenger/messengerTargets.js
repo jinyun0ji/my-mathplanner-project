@@ -69,7 +69,22 @@ const isFallbackName = (name) => ['운영자', '이름 미등록', '이름 미�
 
 
 const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
-const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
+const uniqueNormalized = (values = []) => Array.from(new Set(values.map(normalizeText).filter(Boolean)));
+
+const getStudentIdentityIds = (student = {}) => uniqueNormalized([
+    student?.id,
+    student?.docId,
+    student?.userDocId,
+    student?.studentId,
+    student?.parentLinkedStudentId,
+    student?.authUid,
+    student?.uid,
+    student?.userUid,
+    student?.studentAuthUid,
+    student?.studentUid,
+]);
+
+const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.userUid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
 const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName) || normalizeText(user?.parentName);
 const isExcludedStudent = (student = {}) => (
     student?.active === false
@@ -153,8 +168,10 @@ const buildUserLookups = ({ students = [], parents = [] }) => {
     const studentById = new Map();
     const studentByAuthUid = new Map();
     safeStudents.forEach((student) => {
-        [student?.id, student?.studentId, student?.docId, student?.userDocId, student?.parentLinkedStudentId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
-        [student?.authUid, student?.uid, student?.studentAuthUid, student?.studentUid].filter(Boolean).forEach((uid) => studentByAuthUid.set(String(uid), student));
+        getStudentIdentityIds(student).forEach((id) => {
+            studentById.set(id, student);
+            studentByAuthUid.set(id, student);
+        });
     });
     const parentById = new Map();
     const parentByAuthUid = new Map();
@@ -225,7 +242,7 @@ const buildStudentRoomDebugPayload = ({ room, resolution, displayName }) => {
 
 const logStudentRoomResolution = (room, payload) => {
     if (!isStudentChatRoomType(getRoomType(room))) return;
-    console.log('ROOM RAW DATA / LOOKUP RESULT', payload);
+    if (process.env.NODE_ENV === 'development') console.log('ROOM RAW DATA / LOOKUP RESULT', payload);
 };
 
 const findStudentForStudentRoom = (room, { studentById, studentByAuthUid }) => {
@@ -406,11 +423,10 @@ export const getChatRoomCounterparty = (
         const resolution = findStudentForStudentRoom(room, { studentById, studentByAuthUid });
         const displayName = getStudentDisplayNameFromResolution(resolution, { studentById, parentLast4Map })
             || (normalizeText(room?.studentName) ? appendStudentSuffix(room.studentName) : '이름 미등록 학생');
-        logStudentRoomResolution(buildStudentRoomDebugPayload({
+        logStudentRoomResolution(room, buildStudentRoomDebugPayload({
             room,
-            studentId: resolution.studentId,
+            resolution,
             displayName,
-            source: resolution.source,
         }));
         return {
             uid: resolution.uid || resolution.studentId || null,
@@ -546,7 +562,7 @@ export const buildMessengerTargets = ({ students = [], parents = [], classes = [
     const classMap = new Map(safeClasses.map((classDoc) => [String(classDoc?.id), classDoc]));
     const studentById = new Map();
     safeStudents.forEach((student) => {
-        [student?.id, student?.studentId, student?.docId, student?.userDocId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
+        getStudentIdentityIds(student).forEach((id) => studentById.set(id, student));
     });
     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
     const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
