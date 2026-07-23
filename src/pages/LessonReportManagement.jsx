@@ -216,7 +216,7 @@ const getLessonLogForClassDate = ({ lessonLogs = [], classId, lessonDate }) => (
   (lessonLogs || []).find((log) => resolveClassId(log) === String(classId || '') && resolveLessonLogDate(log) === String(lessonDate || '')) || null
 );
 
-const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, classId, lessonDate, onlyTargeted = false }) => {
+export const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, classId, lessonDate, onlyTargeted = false }) => {
   const studentKeys = buildStudentKeys(student);
   return (homeworkAssignments || [])
     .filter((item) => resolveClassId(item) === String(classId || ''))
@@ -232,6 +232,37 @@ const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, c
       return targets.length === 0 || hasAnyStudentKey(targets, studentKeys);
     });
 };
+
+
+export const getPreviousLessonDate = ({ lessonLogs = [], classId, lessonDate }) => {
+  const currentDate = String(lessonDate || '');
+  if (!classId || !currentDate) return '';
+
+  return (lessonLogs || [])
+    .filter((log) => resolveClassId(log) === String(classId || ''))
+    .map(resolveLessonLogDate)
+    .filter((date) => date && date < currentDate)
+    .sort((a, b) => String(b).localeCompare(String(a)))[0] || '';
+};
+
+export const getHomeworkForPerformanceEvaluation = ({ homeworkAssignments = [], homeworkResults = {}, lessonLogs = [], student, classId, lessonDate }) => {
+  const previousLessonDate = getPreviousLessonDate({ lessonLogs, classId, lessonDate });
+  if (!previousLessonDate) return [];
+
+  return getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate: previousLessonDate, onlyTargeted: true })
+    .filter((assignment) => getHomeworkFilterReason({
+      assignment,
+      lessonDate: previousLessonDate,
+      student,
+      studentId: student?.id,
+      homeworkResults,
+    }) === 'included');
+};
+
+export const getHomeworkForCurrentLesson = ({ homeworkAssignments = [], student, classId, lessonDate }) => (
+  getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })
+    .filter((assignment) => isHomeworkAssignedOnLessonDate(assignment, lessonDate))
+);
 
 const getTestsForStudent = ({ tests = [], grades = {}, student, studentId, classId, lessonDate }) => (
   (tests || [])
@@ -1175,18 +1206,10 @@ export default function LessonReportManagement({
     const reportId = buildLessonReportId({ studentId: student.id, classId, lessonDate });
     const lessonLog = getLessonLogForClassDate({ lessonLogs, classId, lessonDate });
     const attendance = getAttendanceForStudent({ attendanceLogs, student, classId, lessonDate });
-    const selectedHomeworkProgressIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: true })
-      .filter((assignment) => getHomeworkFilterReason({
-        assignment,
-        lessonDate,
-        student,
-        studentId: student.id,
-        homeworkResults,
-      }) === 'included')
+    const selectedHomeworkProgressIds = getHomeworkForPerformanceEvaluation({ homeworkAssignments, homeworkResults, lessonLogs, student, classId, lessonDate })
       .map((item) => item.id)
       .filter(Boolean);
-    const selectedAssignedHomeworkIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })
-      .filter((assignment) => isHomeworkAssignedOnLessonDate(assignment, lessonDate))
+    const selectedAssignedHomeworkIds = getHomeworkForCurrentLesson({ homeworkAssignments, student, classId, lessonDate })
       .map((item) => item.id)
       .filter(Boolean);
     const selectedTestIds = getTestsForStudent({ tests, grades, student, studentId: student.id, classId, lessonDate })

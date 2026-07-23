@@ -1,293 +1,216 @@
-diff --git a/src/components/messenger/messengerTargets.js b/src/components/messenger/messengerTargets.js
-index 0530340ce7118f0f7ce405849748974464acc90a..828b5ba531a6d646bf669c979e66990679cefb49 100644
---- a/src/components/messenger/messengerTargets.js
-+++ b/src/components/messenger/messengerTargets.js
-@@ -47,51 +47,66 @@ const pickRepresentativeClass = (student, classMap) => {
-         .filter(Boolean);
- 
-     if (!linkedClasses.length) return null;
- 
-     const ongoing = linkedClasses.find((classDoc) => !isClosedClass(classDoc));
-     return ongoing || linkedClasses[0] || null;
+diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
+index fb17235230901108592ed6a680064113adeb5ca0..337fb58f9b9cd5c480242cfcb4cc780d4fb46d9b 100644
+--- a/src/pages/LessonReportManagement.jsx
++++ b/src/pages/LessonReportManagement.jsx
+@@ -194,67 +194,98 @@ const getHomeworkFilterReason = ({ assignment, lessonDate, student, studentId, h
+   const hasResult = Boolean(getHomeworkResultForStudentAssignment({ homeworkResults, assignmentId: assignment?.id, student, studentId }));
+   if (!isPendingHomeworkInspection(assignment) && !hasResult) return 'completed-without-result';
+   return 'included';
  };
  
- const appendParentSuffix = (name) => {
-     const normalized = normalizeText(name);
-     if (!normalized) return '';
-     return normalized.endsWith('학부모') ? normalized : `${normalized} 학부모`;
- };
- 
- const appendStudentSuffix = (name) => {
-     const normalized = normalizeText(name);
-     if (!normalized) return '';
-     return normalized.endsWith('학생') ? normalized : `${normalized} 학생`;
- };
- 
- const isStaffRole = (role) => ['admin', 'staff', 'teacher', 'teaching', 'operator', '운영자', '강사'].includes(lower(role));
- const isFallbackName = (name) => ['운영자', '이름 미등록', '이름 미등록 학생', '이름 미등록 학부모', '이름 미등록 학생 학부모'].includes(normalizeText(name));
- 
- 
- const getArrayField = (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : []);
--const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
-+const uniqueNormalized = (values = []) => Array.from(new Set(values.map(normalizeText).filter(Boolean)));
-+
-+const getStudentIdentityIds = (student = {}) => uniqueNormalized([
-+    student?.id,
-+    student?.docId,
-+    student?.userDocId,
-+    student?.studentId,
-+    student?.parentLinkedStudentId,
-+    student?.authUid,
-+    student?.uid,
-+    student?.userUid,
-+    student?.studentAuthUid,
-+    student?.studentUid,
-+]);
-+
-+const getAuthUid = (user) => normalizeText(user?.authUid || user?.uid || user?.userUid || user?.studentAuthUid || user?.studentUid || user?.parentUid);
- const getUserName = (user) => normalizeText(user?.name) || normalizeText(user?.displayName) || normalizeText(user?.studentName) || normalizeText(user?.parentName);
- const isExcludedStudent = (student = {}) => (
-     student?.active === false
-     || lower(student?.status) === 'withdrawn'
-     || lower(student?.status) === 'deletion_requested'
+ const isHomeworkCandidateForLessonReport = (assignment, lessonDate) => (
+   isPendingHomeworkInspection(assignment) || isHomeworkLinkedToLessonDate(assignment, lessonDate)
  );
- const getParentRefsFromStudent = (student = {}) => {
-     const refs = [];
-     [student?.parentId, student?.parentUid, student?.parentDocId].filter(Boolean).forEach((id) => refs.push({ id: String(id), authUid: String(id) }));
-     getArrayField(student?.parentIds).forEach((id) => refs.push({ id, authUid: id }));
-     getArrayField(student?.parentUids).forEach((id) => refs.push({ id, authUid: id }));
-     if (Array.isArray(student?.parents)) {
-         student.parents.forEach((parent) => {
-             if (typeof parent === 'string') refs.push({ id: parent, authUid: parent });
-             else if (parent && typeof parent === 'object') {
-                 const authUid = getAuthUid(parent) || normalizeText(parent?.id) || normalizeText(parent?.parentId);
-                 const id = normalizeText(parent?.id) || normalizeText(parent?.parentId) || authUid;
-                 if (authUid || id) refs.push({ id, authUid: authUid || id });
-             }
-         });
-     }
-     const unique = new Map();
-     refs.filter((ref) => ref.authUid || ref.id).forEach((ref) => {
-         const key = `${ref.authUid || ''}|${ref.id || ''}`;
-         if (!unique.has(key)) unique.set(key, ref);
-@@ -131,52 +146,54 @@ const hasParentRoomHint = (room, counterpartyUid = '') => {
+ 
+ 
+ const isTestHeldOnLessonDate = (test, lessonDate) => (
+   getDateMatches(test, ['date', 'testDate', 'lessonDate'], lessonDate).length > 0
+ );
+ 
+ const getAttendanceForStudent = ({ attendanceLogs = [], student, classId, lessonDate }) => {
+   const studentKeys = buildStudentKeys(student);
+   return attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], studentKeys)
+     && resolveClassId(item) === String(classId || '')
+     && resolveAttendanceDate(item) === String(lessonDate || '')) || null;
  };
  
- const resolveParentRoomDisplayName = (room, parent, studentById) => {
-     const parentName = getUserName(parent);
-     if (parentName && !isFallbackName(parentName)) return appendParentSuffix(parentName);
+ const getLessonLogForClassDate = ({ lessonLogs = [], classId, lessonDate }) => (
+   (lessonLogs || []).find((log) => resolveClassId(log) === String(classId || '') && resolveLessonLogDate(log) === String(lessonDate || '')) || null
+ );
  
-     const explicitParentName = normalizeText(room?.parentName);
-     if (explicitParentName && !isFallbackName(explicitParentName)) return appendParentSuffix(explicitParentName);
- 
-     const linkedStudentIds = Array.isArray(parent?.studentIds) ? parent.studentIds.map(String) : [parent?.studentId, parent?.linkedStudentId].filter(Boolean).map(String);
-     const linkedStudentName = getStudentNameFromIds(linkedStudentIds, studentById);
-     const studentName = linkedStudentName
-         || normalizeText(room?.studentName)
-         || getStudentNameFromIds(getRoomStudentIds(room), studentById);
-     if (studentName && !isFallbackName(studentName)) return appendParentSuffix(studentName);
- 
-     return '이름 미등록 학부모';
- };
- 
- const buildUserLookups = ({ students = [], parents = [] }) => {
-     const safeStudents = Array.isArray(students) ? students : [];
-     const safeParents = Array.isArray(parents) ? parents : [];
-     const studentById = new Map();
-     const studentByAuthUid = new Map();
-     safeStudents.forEach((student) => {
--        [student?.id, student?.studentId, student?.docId, student?.userDocId, student?.parentLinkedStudentId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
--        [student?.authUid, student?.uid, student?.studentAuthUid, student?.studentUid].filter(Boolean).forEach((uid) => studentByAuthUid.set(String(uid), student));
-+        getStudentIdentityIds(student).forEach((id) => {
-+            studentById.set(id, student);
-+            studentByAuthUid.set(id, student);
-+        });
+-const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, classId, lessonDate, onlyTargeted = false }) => {
++export const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, classId, lessonDate, onlyTargeted = false }) => {
+   const studentKeys = buildStudentKeys(student);
+   return (homeworkAssignments || [])
+     .filter((item) => resolveClassId(item) === String(classId || ''))
+     .map((item) => ({ ...item, __candidate_distance: Math.abs(new Date(`${resolveHomeworkDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER }))
+     .sort((a, b) => a.__candidate_distance - b.__candidate_distance)
+     .filter((item) => {
+       if (!onlyTargeted) return true;
+       const targets = [
+         ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
+         ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
+         ...(Array.isArray(item.students) ? item.students : []),
+       ];
+       return targets.length === 0 || hasAnyStudentKey(targets, studentKeys);
      });
-     const parentById = new Map();
-     const parentByAuthUid = new Map();
-     safeParents.forEach((parent) => {
-         [parent?.id, parent?.parentId, parent?.docId, parent?.userDocId].filter(Boolean).forEach((id) => parentById.set(String(id), parent));
-         [parent?.authUid, parent?.uid, parent?.parentUid, parent?.userUid].filter(Boolean).forEach((uid) => parentByAuthUid.set(String(uid), parent));
-     });
-     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
-     return {
-         studentById,
-         studentByAuthUid,
-         parentById,
-         parentByAuthUid,
-         parentLast4Map,
-     };
  };
  
++
++export const getPreviousLessonDate = ({ lessonLogs = [], classId, lessonDate }) => {
++  const currentDate = String(lessonDate || '');
++  if (!classId || !currentDate) return '';
++
++  return (lessonLogs || [])
++    .filter((log) => resolveClassId(log) === String(classId || ''))
++    .map(resolveLessonLogDate)
++    .filter((date) => date && date < currentDate)
++    .sort((a, b) => String(b).localeCompare(String(a)))[0] || '';
++};
++
++export const getHomeworkForPerformanceEvaluation = ({ homeworkAssignments = [], homeworkResults = {}, lessonLogs = [], student, classId, lessonDate }) => {
++  const previousLessonDate = getPreviousLessonDate({ lessonLogs, classId, lessonDate });
++  if (!previousLessonDate) return [];
++
++  return getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate: previousLessonDate, onlyTargeted: true })
++    .filter((assignment) => getHomeworkFilterReason({
++      assignment,
++      lessonDate: previousLessonDate,
++      student,
++      studentId: student?.id,
++      homeworkResults,
++    }) === 'included');
++};
++
++export const getHomeworkForCurrentLesson = ({ homeworkAssignments = [], student, classId, lessonDate }) => (
++  getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })
++    .filter((assignment) => isHomeworkAssignedOnLessonDate(assignment, lessonDate))
++);
++
+ const getTestsForStudent = ({ tests = [], grades = {}, student, studentId, classId, lessonDate }) => (
+   (tests || [])
+     .filter((item) => resolveClassId(item) === String(classId || ''))
+     .map((item) => ({
+       ...item,
+       __sort_hasGrade: Boolean(getGradeForLessonReportStudent({ student, studentId, grades, testId: item.id })),
+       __sort_distance: Math.abs(new Date(`${resolveTestDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER,
+     }))
+     .sort((a, b) => (a.__sort_hasGrade === b.__sort_hasGrade ? a.__sort_distance - b.__sort_distance : (a.__sort_hasGrade ? -1 : 1)))
+ );
  
- const getRoomType = (room) => normalizeText(room?.roomType || room?.channel);
- const isStudentChatRoomType = (roomType) => ['student_teacher', 'student_institute'].includes(roomType);
  
- const getStudentByAnyId = (studentId, { studentById, studentByAuthUid }) => {
-     const normalizedId = normalizeText(studentId);
-     if (!normalizedId) return null;
-     return studentById.get(normalizedId) || studentByAuthUid.get(normalizedId) || null;
-@@ -203,51 +220,51 @@ const buildStudentRoomDebugPayload = ({ room, resolution, displayName }) => {
-         roomId: room?.id || null,
-         room: safeJsonClone(room),
-         'room.studentId': normalizeText(room?.studentId) || null,
-         'room.studentDocId': normalizeText(room?.studentDocId) || null,
-         'room.studentIds': getArrayField(room?.studentIds),
-         'room.studentName': normalizeText(room?.studentName) || null,
-         'room.parentId': normalizeText(room?.parentId) || null,
-         'room.parentName': normalizeText(room?.parentName) || null,
-         participantIds: Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [],
-         participantRoles: room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {},
-         participantUserDocIds: room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {},
-         participantNames: room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {},
-         metadata: safeJsonClone(room?.metadata || {}),
-         '==================== LOOKUP RESULT ====================': true,
-         studentLookupSuccess: Boolean(student),
-         studentLookupSource: resolution?.source || 'unresolved',
-         studentDocumentId,
-         studentAuthUid,
-         studentName,
-         finalDisplayName: displayName || null,
-     };
- };
  
- const logStudentRoomResolution = (room, payload) => {
-     if (!isStudentChatRoomType(getRoomType(room))) return;
--    console.log('ROOM RAW DATA / LOOKUP RESULT', payload);
-+    if (process.env.NODE_ENV === 'development') console.log('ROOM RAW DATA / LOOKUP RESULT', payload);
- };
- 
- const findStudentForStudentRoom = (room, { studentById, studentByAuthUid }) => {
-     const roles = room?.participantRoles && typeof room.participantRoles === 'object' ? room.participantRoles : {};
-     const userDocIds = room?.participantUserDocIds && typeof room.participantUserDocIds === 'object' ? room.participantUserDocIds : {};
-     const participantIds = Array.isArray(room?.participantIds) ? room.participantIds.map(String) : [];
- 
-     const studentId = normalizeText(room?.studentId);
-     const studentFromId = getStudentByAnyId(studentId, { studentById, studentByAuthUid });
-     if (studentFromId) return { student: studentFromId, studentId, uid: getAuthUid(studentFromId) || studentId, source: 'room.studentId' };
- 
-     const studentDocId = normalizeText(room?.studentDocId);
-     const studentFromDocId = getStudentByAnyId(studentDocId, { studentById, studentByAuthUid });
-     if (studentFromDocId) return { student: studentFromDocId, studentId: studentDocId, uid: getAuthUid(studentFromDocId) || studentDocId, source: 'room.studentDocId' };
- 
-     const studentIds = getArrayField(room?.studentIds);
-     for (const id of studentIds) {
-         const student = getStudentByAnyId(id, { studentById, studentByAuthUid });
-         if (student) return { student, studentId: id, uid: getAuthUid(student) || id, source: 'room.studentIds' };
+ export default function LessonReportManagement({
+   students = [],
+   classes = [],
+   lessonLogs = [],
+   attendanceLogs: propAttendanceLogs = [],
+   homeworkAssignments: propHomeworkAssignments = [],
+   tests: propTests = [],
+   homeworkResults: propHomeworkResults = {},
+   grades: propGrades = {},
+   lessonReports = [],
+   closures = [],
+   classTestStats = {},
+@@ -1153,62 +1184,54 @@ export default function LessonReportManagement({
+     try {
+       await persistReport({ reportDraft: draft, action: 'save', closeDraft: false });
+     } catch (error) {
+       setDraftError(error?.message || '수업 리포트 저장에 실패했습니다. 다시 시도해 주세요.');
+     } finally {
+       setReportSaving(false);
      }
+   };
  
-     const roleStudentUid = Object.keys(roles).find((uid) => lower(roles[uid]) === 'student');
-     if (roleStudentUid) {
-         const docId = normalizeText(userDocIds[roleStudentUid]);
-         const student = studentByAuthUid.get(roleStudentUid) || getStudentByAnyId(docId, { studentById, studentByAuthUid });
-@@ -384,55 +401,54 @@ export const getMessengerTargetDisplayName = ({
-         return '이름 미등록 학부모';
+   const sendReport = async ({ reportDraft, closeDraft = true }) => {
+     if (!reportDraft) return;
+     const action = sendMode === 'scheduled' ? 'schedule' : 'send';
+     if (action === 'schedule' && !scheduledSendAt) {
+       throw new Error('예약 전송 시간을 입력해 주세요.');
      }
+     await persistReport({ reportDraft, action, closeDraft });
+   };
  
-     return '이름 미등록 사용자';
- };
  
- export const getChatRoomCounterparty = (
-     room,
-     currentUserId,
-     students = [],
-     parents = [],
- ) => {
-     const {
-         studentById,
-         studentByAuthUid,
-         parentById,
-         parentByAuthUid,
-         parentLast4Map,
-     } = buildUserLookups({ students, parents });
- 
-     const roomType = getRoomType(room);
-     if (isStudentChatRoomType(roomType)) {
-         const resolution = findStudentForStudentRoom(room, { studentById, studentByAuthUid });
-         const displayName = getStudentDisplayNameFromResolution(resolution, { studentById, parentLast4Map })
-             || (normalizeText(room?.studentName) ? appendStudentSuffix(room.studentName) : '이름 미등록 학생');
--        logStudentRoomResolution(buildStudentRoomDebugPayload({
-+        logStudentRoomResolution(room, buildStudentRoomDebugPayload({
-             room,
--            studentId: resolution.studentId,
-+            resolution,
-             displayName,
--            source: resolution.source,
-         }));
-         return {
-             uid: resolution.uid || resolution.studentId || null,
-             role: 'student',
-             user: resolution.student || null,
-             displayName,
-         };
-     }
- 
-     const counterpartyUid = resolveCounterpartyUid(room, currentUserId);
-     if (!counterpartyUid) return null;
- 
-     const participantRoles = room?.participantRoles || {};
-     const participantUserDocIds = room?.participantUserDocIds || {};
-     const roleHint = normalizeText(participantRoles[counterpartyUid]).toLowerCase();
-     const participantNames = room?.participantNames && typeof room.participantNames === 'object' ? room.participantNames : {};
-     const userDocIdHint = normalizeText(participantUserDocIds[counterpartyUid]);
- 
-     const parent =
-         parentByAuthUid.get(counterpartyUid)
-         || parentById.get(counterpartyUid)
-         || (userDocIdHint ? parentById.get(userDocIdHint) : null)
-         || getRoomParentIds(room).map((parentId) => parentById.get(String(parentId)) || parentByAuthUid.get(String(parentId))).find(Boolean)
-         || null;
- 
-@@ -524,51 +540,51 @@ export const sortMessengerTargets = (targets = []) => {
- export const isWithdrawnStudent = (student = {}) => {
-     if (isEndedStatus(student?.status)) return true;
- 
-     const classStatusMap = student?.classStatusMap || {};
-     const mapStatuses = Object.values(classStatusMap)
-         .map((entry) => entry?.status || entry)
-         .filter(Boolean);
- 
-     const classStatuses = student?.classStatuses || {};
-     const classStatusesValues = Object.values(classStatuses).filter(Boolean);
- 
-     const mergedStatuses = [...mapStatuses, ...classStatusesValues];
-     if (!mergedStatuses.length) return false;
- 
-     return mergedStatuses.every((status) => isEndedStatus(status));
- };
- 
- export const buildMessengerTargets = ({ students = [], parents = [], classes = [] }) => {
-     const safeStudents = Array.isArray(students) ? students : [];
-     const safeParents = Array.isArray(parents) ? parents : [];
-     const safeClasses = Array.isArray(classes) ? classes : [];
- 
-     const classMap = new Map(safeClasses.map((classDoc) => [String(classDoc?.id), classDoc]));
-     const studentById = new Map();
-     safeStudents.forEach((student) => {
--        [student?.id, student?.studentId, student?.docId, student?.userDocId].filter(Boolean).forEach((id) => studentById.set(String(id), student));
-+        getStudentIdentityIds(student).forEach((id) => studentById.set(id, student));
-     });
-     const parentLast4Map = buildStudentParentPhoneLast4Map(safeStudents, safeParents);
-     const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
-     const studentByParentPhone = new Map();
-     safeStudents.forEach((student) => {
-         [student?.parentPhone, student?.motherPhone, student?.fatherPhone, student?.guardianPhone].forEach((phone) => {
-             const normalizedPhone = normalizePhone(phone);
-             if (normalizedPhone && !studentByParentPhone.has(normalizedPhone)) studentByParentPhone.set(normalizedPhone, student);
-         });
-     });
- 
-     const studentOptions = safeStudents
-         .filter((student) => !isExcludedStudent(student))
-         .map((student) => {
-             const authUid = getAuthUid(student) || normalizeText(student?.id);
-             if (!authUid) return null;
-             const representativeClass = pickRepresentativeClass(student, classMap);
-             const classLabel = representativeClass
-                 ? formatClassLabel(representativeClass, { includeClosedBadge: true })
-                 : '미분류';
- 
-             const displayName = getMessengerTargetDisplayName({
-                 user: student,
-                 role: 'student',
-                 studentById,
+   const buildAutoDraftForStudent = (student) => {
+     const classId = String(selectedClassId || '');
+     const lessonDate = String(selectedDate || todayYmd());
+     const reportId = buildLessonReportId({ studentId: student.id, classId, lessonDate });
+     const lessonLog = getLessonLogForClassDate({ lessonLogs, classId, lessonDate });
+     const attendance = getAttendanceForStudent({ attendanceLogs, student, classId, lessonDate });
+-    const selectedHomeworkProgressIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: true })
+-      .filter((assignment) => getHomeworkFilterReason({
+-        assignment,
+-        lessonDate,
+-        student,
+-        studentId: student.id,
+-        homeworkResults,
+-      }) === 'included')
++    const selectedHomeworkProgressIds = getHomeworkForPerformanceEvaluation({ homeworkAssignments, homeworkResults, lessonLogs, student, classId, lessonDate })
+       .map((item) => item.id)
+       .filter(Boolean);
+-    const selectedAssignedHomeworkIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })
+-      .filter((assignment) => isHomeworkAssignedOnLessonDate(assignment, lessonDate))
++    const selectedAssignedHomeworkIds = getHomeworkForCurrentLesson({ homeworkAssignments, student, classId, lessonDate })
+       .map((item) => item.id)
+       .filter(Boolean);
+     const selectedTestIds = getTestsForStudent({ tests, grades, student, studentId: student.id, classId, lessonDate })
+       .filter((test) => isTestHeldOnLessonDate(test, lessonDate))
+       .map((item) => item.id)
+       .filter(Boolean);
+     const reportDraft = {
+       id: reportId,
+       studentId: String(student.id),
+       classId,
+       lessonDate,
+       lessonLogId: lessonLog?.id || null,
+       attendanceStatus: attendance?.attendance || attendance?.status || '미기록',
+       learnedTopics: resolveLessonLogProgress(lessonLog),
+       selectedHomeworkProgressIds,
+       selectedAssignedHomeworkIds,
+       selectedHomeworkIds: Array.from(new Set([...selectedHomeworkProgressIds, ...selectedAssignedHomeworkIds])),
+       selectedTestIds,
+       status: LESSON_REPORT_STATUS.DRAFT,
+       sendStatus: LESSON_REPORT_SEND_STATUS.DRAFT,
+       sendMode: 'now',
+       scheduledSendAt: null,
+       studentNotificationSent: false,
+       parentNotificationSent: false,
+       isBulkDraftGenerated: true,
+diff --git a/src/pages/LessonReportManagement.test.jsx b/src/pages/LessonReportManagement.test.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..05312b964dd4755df77df0eb2326c5e8805e9aba
+--- /dev/null
++++ b/src/pages/LessonReportManagement.test.jsx
+@@ -0,0 +1,41 @@
++import {
++  getHomeworkForCurrentLesson,
++  getHomeworkForPerformanceEvaluation,
++  getPreviousLessonDate,
++} from './LessonReportManagement';
++
++jest.mock('../firebase/client', () => ({ db: {} }));
++jest.mock('../auth/useAuth', () => () => ({ profileDocId: 'staff-1' }));
++
++describe('LessonReportManagement homework auto selection helpers', () => {
++  const student = { id: 'student-1' };
++  const lessonLogs = [
++    { id: 'l1', classId: 'class-a', date: '2026-07-02' },
++    { id: 'l2', classId: 'class-a', date: '2026-07-09' },
++    { id: 'l3', classId: 'class-a', date: '2026-07-23' },
++    { id: 'other', classId: 'class-b', date: '2026-07-16' },
++  ];
++  const homeworkAssignments = [
++    { id: 'hw-0702', classId: 'class-a', date: '2026-07-02', targetStudents: ['student-1'] },
++    { id: 'hw-0709', classId: 'class-a', date: '2026-07-09', targetStudents: ['student-1'] },
++    { id: 'hw-0723', classId: 'class-a', date: '2026-07-23', targetStudents: ['student-1'] },
++    { id: 'other-class', classId: 'class-b', date: '2026-07-09', targetStudents: ['student-1'] },
++    { id: 'other-student', classId: 'class-a', date: '2026-07-09', targetStudents: ['student-2'] },
++  ];
++
++  test('finds the previous actual lesson date for the same class, not the previous calendar day', () => {
++    expect(getPreviousLessonDate({ lessonLogs, classId: 'class-a', lessonDate: '2026-07-23' })).toBe('2026-07-09');
++  });
++
++  test('returns no performance homework for the first lesson', () => {
++    expect(getHomeworkForPerformanceEvaluation({ homeworkAssignments, lessonLogs, student, classId: 'class-a', lessonDate: '2026-07-02' })).toEqual([]);
++  });
++
++  test('uses previous lesson homework for performance and current lesson homework for assigned homework', () => {
++    const progressIds = getHomeworkForPerformanceEvaluation({ homeworkAssignments, lessonLogs, student, classId: 'class-a', lessonDate: '2026-07-23' }).map((item) => item.id);
++    const currentIds = getHomeworkForCurrentLesson({ homeworkAssignments, student, classId: 'class-a', lessonDate: '2026-07-23' }).map((item) => item.id);
++
++    expect(progressIds).toEqual(['hw-0709']);
++    expect(currentIds).toEqual(['hw-0723']);
++  });
++});
