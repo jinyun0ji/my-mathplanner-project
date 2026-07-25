@@ -40,6 +40,10 @@ export default async function openNotification({ notification, db = firestoreDb,
         notification,
     };
 
+    if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('viewerNotificationOpen', { detail: payload }));
+    }
+
     if (onNavigate) {
         await onNavigate(payload);
     }

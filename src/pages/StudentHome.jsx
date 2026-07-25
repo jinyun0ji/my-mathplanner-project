@@ -198,6 +198,7 @@ export default function StudentHome({
     masterViewStudentAuthUid = '',
     readOnly = false,
     embedded = false,
+    onViewerTabSelect,
 }) {
     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
     const [searchParams, setSearchParams] = useSearchParams();
@@ -232,6 +233,7 @@ export default function StudentHome({
 
     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
+        onViewerTabSelect?.(tab, { reselected: tab === activeTab });
         _setActiveTab(tab);
         if (embedded) return;
         setSearchParams(prev => {
@@ -251,7 +253,7 @@ export default function StudentHome({
 
             return next;
         }, { replace });
-    }, [setSearchParams, embedded]);
+    }, [setSearchParams, embedded, activeTab, onViewerTabSelect]);
     const setClassroomMode = useCallback((mode, { replace = false } = {}) => {
         const value = mode === 'formula' ? 'formula' : 'class';
         _setClassroomMode(value);

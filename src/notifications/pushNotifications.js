@@ -50,9 +50,10 @@ const getNativePushToken = async () => {
 };
 
 export const initializePushNotificationInteractions = async (onOpenNotificationCenter) => {
-  const openCenter = () => {
-    if (typeof onOpenNotificationCenter === 'function') onOpenNotificationCenter();
-    if (window.location.pathname !== '/home' || window.location.search !== '?tab=notifications') {
+  const openCenter = (payload) => {
+    if (typeof onOpenNotificationCenter === 'function') {
+      onOpenNotificationCenter(payload);
+    } else if (window.location.pathname !== '/home' || window.location.search !== '?tab=notifications') {
       window.history.pushState({}, '', '/home?tab=notifications');
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
@@ -66,14 +67,14 @@ export const initializePushNotificationInteractions = async (onOpenNotificationC
       await PushNotifications.addListener('pushNotificationReceived', (notification) => {
         console.info('[push] foreground notification received', notification);
       });
-      await PushNotifications.addListener('pushNotificationActionPerformed', () => openCenter());
+      await PushNotifications.addListener('pushNotificationActionPerformed', (action) => openCenter(action?.notification?.data));
     } catch (error) {
       console.info('[push] native push listeners unavailable', error?.message || error);
     }
     return;
   }
 
-  window.addEventListener('appNotificationClick', openCenter);
+  window.addEventListener('appNotificationClick', (event) => openCenter(event?.detail));
 };
 
 export const registerDevicePushToken = async (authUid) => {

@@ -1,216 +1,1566 @@
-diff --git a/src/pages/LessonReportManagement.jsx b/src/pages/LessonReportManagement.jsx
-index fb17235230901108592ed6a680064113adeb5ca0..337fb58f9b9cd5c480242cfcb4cc780d4fb46d9b 100644
---- a/src/pages/LessonReportManagement.jsx
-+++ b/src/pages/LessonReportManagement.jsx
-@@ -194,67 +194,98 @@ const getHomeworkFilterReason = ({ assignment, lessonDate, student, studentId, h
-   const hasResult = Boolean(getHomeworkResultForStudentAssignment({ homeworkResults, assignmentId: assignment?.id, student, studentId }));
-   if (!isPendingHomeworkInspection(assignment) && !hasResult) return 'completed-without-result';
-   return 'included';
- };
- 
- const isHomeworkCandidateForLessonReport = (assignment, lessonDate) => (
-   isPendingHomeworkInspection(assignment) || isHomeworkLinkedToLessonDate(assignment, lessonDate)
- );
- 
- 
- const isTestHeldOnLessonDate = (test, lessonDate) => (
-   getDateMatches(test, ['date', 'testDate', 'lessonDate'], lessonDate).length > 0
- );
- 
- const getAttendanceForStudent = ({ attendanceLogs = [], student, classId, lessonDate }) => {
-   const studentKeys = buildStudentKeys(student);
-   return attendanceLogs.find((item) => hasAnyStudentKey([item.studentId, item.studentUid], studentKeys)
-     && resolveClassId(item) === String(classId || '')
-     && resolveAttendanceDate(item) === String(lessonDate || '')) || null;
- };
- 
- const getLessonLogForClassDate = ({ lessonLogs = [], classId, lessonDate }) => (
-   (lessonLogs || []).find((log) => resolveClassId(log) === String(classId || '') && resolveLessonLogDate(log) === String(lessonDate || '')) || null
- );
- 
--const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, classId, lessonDate, onlyTargeted = false }) => {
-+export const getHomeworkAssignmentsForStudent = ({ homeworkAssignments = [], student, classId, lessonDate, onlyTargeted = false }) => {
-   const studentKeys = buildStudentKeys(student);
-   return (homeworkAssignments || [])
-     .filter((item) => resolveClassId(item) === String(classId || ''))
-     .map((item) => ({ ...item, __candidate_distance: Math.abs(new Date(`${resolveHomeworkDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER }))
-     .sort((a, b) => a.__candidate_distance - b.__candidate_distance)
-     .filter((item) => {
-       if (!onlyTargeted) return true;
-       const targets = [
-         ...(Array.isArray(item.targetStudents) ? item.targetStudents : []),
-         ...(Array.isArray(item.assignedStudentIds) ? item.assignedStudentIds : []),
-         ...(Array.isArray(item.students) ? item.students : []),
-       ];
-       return targets.length === 0 || hasAnyStudentKey(targets, studentKeys);
-     });
- };
- 
-+
-+export const getPreviousLessonDate = ({ lessonLogs = [], classId, lessonDate }) => {
-+  const currentDate = String(lessonDate || '');
-+  if (!classId || !currentDate) return '';
-+
-+  return (lessonLogs || [])
-+    .filter((log) => resolveClassId(log) === String(classId || ''))
-+    .map(resolveLessonLogDate)
-+    .filter((date) => date && date < currentDate)
-+    .sort((a, b) => String(b).localeCompare(String(a)))[0] || '';
-+};
-+
-+export const getHomeworkForPerformanceEvaluation = ({ homeworkAssignments = [], homeworkResults = {}, lessonLogs = [], student, classId, lessonDate }) => {
-+  const previousLessonDate = getPreviousLessonDate({ lessonLogs, classId, lessonDate });
-+  if (!previousLessonDate) return [];
-+
-+  return getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate: previousLessonDate, onlyTargeted: true })
-+    .filter((assignment) => getHomeworkFilterReason({
-+      assignment,
-+      lessonDate: previousLessonDate,
-+      student,
-+      studentId: student?.id,
-+      homeworkResults,
-+    }) === 'included');
-+};
-+
-+export const getHomeworkForCurrentLesson = ({ homeworkAssignments = [], student, classId, lessonDate }) => (
-+  getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })
-+    .filter((assignment) => isHomeworkAssignedOnLessonDate(assignment, lessonDate))
-+);
-+
- const getTestsForStudent = ({ tests = [], grades = {}, student, studentId, classId, lessonDate }) => (
-   (tests || [])
-     .filter((item) => resolveClassId(item) === String(classId || ''))
-     .map((item) => ({
-       ...item,
-       __sort_hasGrade: Boolean(getGradeForLessonReportStudent({ student, studentId, grades, testId: item.id })),
-       __sort_distance: Math.abs(new Date(`${resolveTestDate(item)}T00:00:00`).getTime() - new Date(`${lessonDate}T00:00:00`).getTime()) || Number.MAX_SAFE_INTEGER,
-     }))
-     .sort((a, b) => (a.__sort_hasGrade === b.__sort_hasGrade ? a.__sort_distance - b.__sort_distance : (a.__sort_hasGrade ? -1 : 1)))
- );
- 
- 
- 
- export default function LessonReportManagement({
-   students = [],
-   classes = [],
-   lessonLogs = [],
-   attendanceLogs: propAttendanceLogs = [],
-   homeworkAssignments: propHomeworkAssignments = [],
-   tests: propTests = [],
-   homeworkResults: propHomeworkResults = {},
-   grades: propGrades = {},
-   lessonReports = [],
-   closures = [],
-   classTestStats = {},
-@@ -1153,62 +1184,54 @@ export default function LessonReportManagement({
-     try {
-       await persistReport({ reportDraft: draft, action: 'save', closeDraft: false });
-     } catch (error) {
-       setDraftError(error?.message || '수업 리포트 저장에 실패했습니다. 다시 시도해 주세요.');
-     } finally {
-       setReportSaving(false);
-     }
-   };
- 
-   const sendReport = async ({ reportDraft, closeDraft = true }) => {
-     if (!reportDraft) return;
-     const action = sendMode === 'scheduled' ? 'schedule' : 'send';
-     if (action === 'schedule' && !scheduledSendAt) {
-       throw new Error('예약 전송 시간을 입력해 주세요.');
-     }
-     await persistReport({ reportDraft, action, closeDraft });
-   };
- 
- 
-   const buildAutoDraftForStudent = (student) => {
-     const classId = String(selectedClassId || '');
-     const lessonDate = String(selectedDate || todayYmd());
-     const reportId = buildLessonReportId({ studentId: student.id, classId, lessonDate });
-     const lessonLog = getLessonLogForClassDate({ lessonLogs, classId, lessonDate });
-     const attendance = getAttendanceForStudent({ attendanceLogs, student, classId, lessonDate });
--    const selectedHomeworkProgressIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: true })
--      .filter((assignment) => getHomeworkFilterReason({
--        assignment,
--        lessonDate,
--        student,
--        studentId: student.id,
--        homeworkResults,
--      }) === 'included')
-+    const selectedHomeworkProgressIds = getHomeworkForPerformanceEvaluation({ homeworkAssignments, homeworkResults, lessonLogs, student, classId, lessonDate })
-       .map((item) => item.id)
-       .filter(Boolean);
--    const selectedAssignedHomeworkIds = getHomeworkAssignmentsForStudent({ homeworkAssignments, student, classId, lessonDate, onlyTargeted: false })
--      .filter((assignment) => isHomeworkAssignedOnLessonDate(assignment, lessonDate))
-+    const selectedAssignedHomeworkIds = getHomeworkForCurrentLesson({ homeworkAssignments, student, classId, lessonDate })
-       .map((item) => item.id)
-       .filter(Boolean);
-     const selectedTestIds = getTestsForStudent({ tests, grades, student, studentId: student.id, classId, lessonDate })
-       .filter((test) => isTestHeldOnLessonDate(test, lessonDate))
-       .map((item) => item.id)
-       .filter(Boolean);
-     const reportDraft = {
-       id: reportId,
-       studentId: String(student.id),
-       classId,
-       lessonDate,
-       lessonLogId: lessonLog?.id || null,
-       attendanceStatus: attendance?.attendance || attendance?.status || '미기록',
-       learnedTopics: resolveLessonLogProgress(lessonLog),
-       selectedHomeworkProgressIds,
-       selectedAssignedHomeworkIds,
-       selectedHomeworkIds: Array.from(new Set([...selectedHomeworkProgressIds, ...selectedAssignedHomeworkIds])),
-       selectedTestIds,
-       status: LESSON_REPORT_STATUS.DRAFT,
-       sendStatus: LESSON_REPORT_SEND_STATUS.DRAFT,
-       sendMode: 'now',
-       scheduledSendAt: null,
-       studentNotificationSent: false,
-       parentNotificationSent: false,
-       isBulkDraftGenerated: true,
-diff --git a/src/pages/LessonReportManagement.test.jsx b/src/pages/LessonReportManagement.test.jsx
+diff --git a/docs/viewer-refresh-architecture.md b/docs/viewer-refresh-architecture.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..05312b964dd4755df77df0eb2326c5e8805e9aba
+index 0000000000000000000000000000000000000000..3391b4323595fac388ba7bcb42d05cfc972b00df
 --- /dev/null
-+++ b/src/pages/LessonReportManagement.test.jsx
-@@ -0,0 +1,41 @@
++++ b/docs/viewer-refresh-architecture.md
+@@ -0,0 +1,40 @@
++# 학생/학부모 데이터 refresh 구조
++
++## 조사 결과 (변경 전)
++
++`loadViewerDataOnce()`는 `AppRoutes`의 viewer effect 한 곳에서 로그인/권한 확정, 사용자 UID,
++연결 학생 또는 학부모의 선택 학생이 바뀔 때 호출됐다. 탭 변경, pull-to-refresh, App Resume,
++푸시 진입에는 별도 호출이 없었다. 관리자 Master View에는 별도의 호출 경로가 있으며 이번 viewer
++내비게이션 변경 대상에서 제외했다.
++
++한 번의 호출은 학생 문서와 클래스 문서를 먼저 읽은 뒤 공지, 출결, 클리닉 로그/예약, 성적,
++숙제/숙제 결과, 수업 로그, 시험/통계, 영상 진행/메모, 외부 일정, 휴원일, 발송된 리포트를
++한꺼번에 조회했다.
++
++## 변경 후 탭별 사용 데이터
++
++| 탭 | refresh 함수 | one-shot 데이터 |
++| --- | --- | --- |
++| 홈 | `refreshHome()` | 출결, 숙제, 성적, 클리닉, 일정, 공지 |
++| 클래스 | `refresh('class')` | 수업/시험/통계/리포트, 영상 |
++| 학습관리/리포트 | `refreshLearning()` | 숙제/결과, 성적, 클리닉, 수업/시험, 영상 |
++| 게시판 | `refreshBoard()` | 공지/게시글 |
++| 일정 | `refreshSchedule()` | 외부 일정, 휴원일, 클리닉 예약 |
++| 메신저 | `refreshMessenger()` | one-shot 없음(실시간 채팅 사용) |
++| 메뉴/더보기 | `refreshMenu()` | 공지 |
++
++모든 탭은 학생과 노출 가능한 클래스 범위를 공통 기반으로 사용한다. 탭 refresh controller는
++20초 TTL과 in-flight 중복 제거를 적용한다. 같은 탭 재선택과 pull-to-refresh 및 알림 진입은
++현재/대상 탭만 강제 refresh한다. 백그라운드 체류가 30초 이상인 App Resume만 현재 탭 refresh를
++시도한다.
++
++실시간 허용 목록은 게시글(`announcements`), 클리닉 리포트(`lessonReports`), 채팅
++(`chatMessages`), 클리닉 예약(`clinicReservations`) 네 종류로 제한한다. 숙제, 시험, 성적,
++출결, 영상, 자료에는 새 listener를 만들지 않는다.
++
++## 예약 전날 자동 알림 후속 작업
++
++Scheduled Function을 매일 한 번 실행하여 다음날 `clinicReservations`를 조회하고 학생 문서의
++`authUid`와 연결 학부모를 수신자로 결정한다. 중복 발송은 기존 schema를 바꾸지 않도록 별도
++`notificationDeliveryLogs/{reservationId_yyyyMMdd}` 문서를 transaction으로 선점한 뒤 전송하는
++방식을 사용한다. 실제 스케줄러/FCM 배포는 운영 시간대와 발송 문구 확정 후 별도 커밋으로 구현한다.
+diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
+index 0c1ff3f4baeababfafe1f4f3ff733b05a787820c..5460a352922d694abed9a9046e45aa8b2e7d5515 100644
+--- a/src/app/AppRoutes.jsx
++++ b/src/app/AppRoutes.jsx
+@@ -23,80 +23,86 @@ import ParentHome from '../pages/ParentHome';
+ import ParentStudentPicker from '../pages/parent/ParentStudentPicker';
+ import OnboardingPage from '../pages/OnboardingPage';
+ import StaffManagement from '../pages/admin/StaffManagement';
+ import AdminNotificationsPage from '../pages/admin/AdminNotificationsPage';
+ import AdminPaymentsPage from '../pages/admin/AdminPaymentsPage';
+ import AdminSettingsPage from '../pages/admin/AdminSettingsPage';
+ import AdminLogsPage from '../pages/admin/AdminLogsPage';
+ import AccountDeletionRequestsPage from '../pages/admin/AccountDeletionRequestsPage';
+ import MasterViewPage from '../pages/admin/MasterViewPage';
+ import InviteManagementPage from '../pages/admin/InviteManagementPage';
+ import FormulaBookManagement from '../pages/FormulaBookManagement';
+ import StaffMobileMessengerPage from '../pages/StaffMobileMessengerPage';
+ import AdminRoute from '../routes/AdminRoute';
+ import StaffOrTeachingRoute from '../routes/StaffOrTeachingRoute';
+ import useAuth from '../auth/useAuth';
+ import {
+     ROLE,
+     isParentRole,
+     isStudentRole,
+     isAdminRole,
+     isStaffRole,
+     isStaffOrTeachingRole,
+     isViewerGroupRole,
+ } from '../constants/roles';
+ import { db, functions } from '../firebase/client';
+-import { invalidateStaffDataCache, loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
++import { invalidateStaffDataCache, loadStaffDataOnce } from '../data/firestoreSync';
+ import { createLinkCode, createStaffUser } from '../admin/staffService';
+ import { claimStudentLinkCode } from '../parent/linkCodeService';
+ import { useParentContext } from '../parent';
+ import { logClientError } from '../utils/errorLogger';
+ import { isCapacitorNativeEnvironment, STAFF_MOBILE_MESSENGER_ROUTE } from '../utils/capacitorEnvironment';
+ import { addVideoMemo, deleteVideoMemo, updateVideoMemo } from '../domain/memo/videoMemo.service';
+ import { getAssignmentQuestionNumbers, normalizeHomeworkResultMapForDisplay } from '../domain/homework/homework.service';
+ import { recomputeClassTestStats } from '../domain/grade/classTestStats.service';
+ import {
+     addDoc,
+     arrayRemove,
+     arrayUnion,
+     collection,
+     deleteDoc,
+     doc,
+     getDoc,
+     getDocs,
+     limit,
+     orderBy,
+     query,
+     setDoc,
+     serverTimestamp,
+     Timestamp,
+     where,
+     updateDoc,
+     writeBatch,
+ } from 'firebase/firestore';
+ import { httpsCallable } from 'firebase/functions';
+ import { initializePushNotificationInteractions, registerDevicePushToken, unregisterDevicePushToken } from '../notifications/pushNotifications';
++import { App as CapacitorApp } from '@capacitor/app';
 +import {
-+  getHomeworkForCurrentLesson,
-+  getHomeworkForPerformanceEvaluation,
-+  getPreviousLessonDate,
-+} from './LessonReportManagement';
++    createViewerRefreshController,
++    getViewerTabFromNotification,
++    VIEWER_RESUME_THRESHOLD_MS,
++} from '../data/viewerRefresh';
+ 
+ const PAGE_ROUTES = {
+     home: '/home',
+     lessons: '/lessons',
+     lessonReports: '/lesson-reports',
+     students: '/students',
+     attendance: '/attendance',
+     grades: '/grades',
+     homework: '/homework',
+     clinic: '/clinic',
+     payment: '/payment',
+     communication: '/communication',
+     closures: '/closures',
+ };
+ 
+ const ADMIN_ROUTES = new Set([
+     '/admin/staff',
+     '/admin/invites',
+     '/admin/notifications',
+     '/admin/payments',
+     '/admin/settings',
+     '/admin/logs',
+     '/admin/account-deletion-requests',
+     '/master-view',
+     '/staff/invites',
+@@ -189,53 +195,58 @@ export default function AppRoutes({ user, role, studentIds }) {
+       studentIds: parentStudentIds,
+       loading: parentLoading,
+   } = useParentContext();
+ 
+   useEffect(() => {
+       if (!userId) return undefined;
+       let active = true;
+       let registeredToken = null;
+       registerDevicePushToken(userId)
+           .then((token) => {
+               if (!active) return;
+               registeredToken = token;
+           })
+           .catch((error) => console.warn('[push] token registration skipped', error));
+ 
+       return () => {
+           active = false;
+           if (registeredToken) {
+               unregisterDevicePushToken(userId, registeredToken)
+                   .catch((error) => console.warn('[push] token cleanup failed', error));
+           }
+       };
+   }, [userId]);
+ 
+ 
++  const viewerRefreshRef = useRef(null);
++  const currentViewerTabRef = useRef('home');
 +
-+jest.mock('../firebase/client', () => ({ db: {} }));
-+jest.mock('../auth/useAuth', () => () => ({ profileDocId: 'staff-1' }));
+   useEffect(() => {
+-      initializePushNotificationInteractions(() => {
+-          navigate('/home?tab=notifications');
++      initializePushNotificationInteractions((payload) => {
++          const targetTab = getViewerTabFromNotification(payload || {});
++          viewerRefreshRef.current?.refresh(targetTab, { force: true });
++          navigate(`/home?tab=${targetTab}`);
+       }).catch((error) => console.warn('[push] notification interaction setup failed', error));
+   }, [navigate]);
+ 
+   const parentStudentId = isParentRole(role) ? parentActiveStudentId : null;
+ 
+   const [students, setStudents] = useState([]);
+   const [parents, setParents] = useState([]);
+   const [classes, setClasses] = useState([]);
+ 
+   const [lessonLogs, setLessonLogs] = useState([]);
+   const [attendanceLogs, setAttendanceLogs] = useState([]);
+   const [clinicLogs, setClinicLogs] = useState([]);
+   const [workLogs, setWorkLogs] = useState([]);
+   const [announcements, setAnnouncements] = useState([]);
+   const [tests, setTests] = useState([]);
+   const [homeworkAssignments, setHomeworkAssignments] = useState([]);
+   const [paymentLogs, setPaymentLogs] = useState([]);
+   const [isPaymentLogsLoading, setIsPaymentLogsLoading] = useState(false);
+   const [externalSchedules, setExternalSchedules] = useState([]);
+   const [closures, setClosures] = useState([]);
+   const [lessonReports, setLessonReports] = useState([]);
+ 
+   const [grades, setGrades] = useState({});
+   const [classTestStats, setClassTestStats] = useState({});
+   const [homeworkResults, setHomeworkResults] = useState({});
+@@ -278,92 +289,143 @@ export default function AppRoutes({ user, role, studentIds }) {
+         setParents,
+         setClasses,
+         setTests,
+         setLessonLogs,
+         setAttendanceLogs,
+         setClinicLogs,
+         setWorkLogs,
+         setAnnouncements,
+         setHomeworkAssignments,
+         setPaymentLogs,
+         setGrades,
+         setHomeworkResults,
+         setExternalSchedules,
+         setClosures,
+         setLessonReports,
+     }).finally(() => {
+         if (shouldLoadPayments && isActive) {
+             setIsPaymentLogsLoading(false);
+         }
+     });
+     return () => {
+         isActive = false;
+     };
+   }, [db, isAuthenticated, role, page]);
+ 
+-  // ✅✅✅ [수정] 학생(STUDENT)도 viewer 로딩을 타도록
++  const viewerContextRef = useRef({});
++  viewerContextRef.current = {
++      db,
++      isLoggedIn: isAuthenticated,
++      userRole: role,
++      userId,
++      studentIds: studentIds || [],
++      activeStudentId: isParentRole(role) ? parentActiveStudentId : null,
++      setStudents,
++      setClasses,
++      setLessonLogs,
++      setAttendanceLogs,
++      setClinicLogs,
++      setHomeworkAssignments,
++      setAnnouncements,
++      setTests,
++      setVideoProgress,
++      setVideoMemos,
++      setExternalSchedules,
++      setHomeworkResults,
++      setGrades,
++      setClosures,
++      setClassTestStats,
++      setLessonReports,
++  };
 +
-+describe('LessonReportManagement homework auto selection helpers', () => {
-+  const student = { id: 'student-1' };
-+  const lessonLogs = [
-+    { id: 'l1', classId: 'class-a', date: '2026-07-02' },
-+    { id: 'l2', classId: 'class-a', date: '2026-07-09' },
-+    { id: 'l3', classId: 'class-a', date: '2026-07-23' },
-+    { id: 'other', classId: 'class-b', date: '2026-07-16' },
-+  ];
-+  const homeworkAssignments = [
-+    { id: 'hw-0702', classId: 'class-a', date: '2026-07-02', targetStudents: ['student-1'] },
-+    { id: 'hw-0709', classId: 'class-a', date: '2026-07-09', targetStudents: ['student-1'] },
-+    { id: 'hw-0723', classId: 'class-a', date: '2026-07-23', targetStudents: ['student-1'] },
-+    { id: 'other-class', classId: 'class-b', date: '2026-07-09', targetStudents: ['student-1'] },
-+    { id: 'other-student', classId: 'class-a', date: '2026-07-09', targetStudents: ['student-2'] },
-+  ];
++  if (!viewerRefreshRef.current) {
++      viewerRefreshRef.current = createViewerRefreshController({ getContext: () => viewerContextRef.current });
++  }
 +
-+  test('finds the previous actual lesson date for the same class, not the previous calendar day', () => {
-+    expect(getPreviousLessonDate({ lessonLogs, classId: 'class-a', lessonDate: '2026-07-23' })).toBe('2026-07-09');
-+  });
++  const activeViewerTab = useMemo(
++      () => new URLSearchParams(location.search).get('tab') || 'home',
++      [location.search],
++  );
++  currentViewerTabRef.current = activeViewerTab;
 +
-+  test('returns no performance homework for the first lesson', () => {
-+    expect(getHomeworkForPerformanceEvaluation({ homeworkAssignments, lessonLogs, student, classId: 'class-a', lessonDate: '2026-07-02' })).toEqual([]);
-+  });
++  // Login, linked-child change, and URL tab entry load only the active tab's slice.
+   useEffect(() => {
+     if (!isAuthenticated || !role) return;
++    if (!(isViewerGroupRole(role) || isStudentRole(role))) return;
++    viewerRefreshRef.current.refresh(activeViewerTab);
++  }, [isAuthenticated, role, userId, parentActiveStudentId, studentIds, activeViewerTab]);
+ 
+-    const shouldLoadViewerData = isViewerGroupRole(role) || isStudentRole(role);
+-    if (!shouldLoadViewerData) return;
+-
+-    const state = { cancelled: false };
++  const handleViewerTabSelect = useCallback((tab, { reselected = false } = {}) => {
++      viewerRefreshRef.current?.refresh(tab, { force: reselected });
++      if (reselected && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
++  }, []);
+ 
+-    // 학생이면 본인 uid만 대상으로 로딩
+-    const resolvedStudentIds = isStudentRole(role)
+-      ? (studentIds || [])
+-      : (studentIds || []);
++  useEffect(() => {
++      if (!(isViewerGroupRole(role) || isStudentRole(role))) return undefined;
++      let backgroundedAt = null;
++      const listener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
++          if (!isActive) {
++              backgroundedAt = Date.now();
++              return;
++          }
++          if (backgroundedAt && Date.now() - backgroundedAt >= VIEWER_RESUME_THRESHOLD_MS) {
++              viewerRefreshRef.current?.refresh(currentViewerTabRef.current);
++          }
++          backgroundedAt = null;
++      });
++      return () => { listener.then((handle) => handle.remove()); };
++  }, [role]);
+ 
+-    loadViewerDataOnce({
+-        db,
+-        isLoggedIn: isAuthenticated,
+-        userRole: role,
+-        userId,
+-        studentIds: resolvedStudentIds,
+-        activeStudentId: isParentRole(role) ? parentActiveStudentId : null,
+-        setStudents,
+-        setClasses,
+-        setLessonLogs,
+-        setAttendanceLogs,
+-        setClinicLogs,
+-        setHomeworkAssignments,
+-        setAnnouncements,
+-        setTests,
+-        setVideoProgress,
+-        setVideoMemos,
+-        setExternalSchedules,
+-        setHomeworkResults,
+-        setGrades,
+-        setClosures,
+-        setClassTestStats,
+-        setLessonReports,
+-        isCancelled: () => state.cancelled,
+-    });
++  useEffect(() => {
++      if (!(isViewerGroupRole(role) || isStudentRole(role))) return undefined;
++      let pullStart = null;
++      const onTouchStart = (event) => {
++          if (window.scrollY <= 0) pullStart = event.touches?.[0]?.clientY ?? null;
++      };
++      const onTouchEnd = (event) => {
++          const end = event.changedTouches?.[0]?.clientY;
++          if (pullStart !== null && end - pullStart >= 80) {
++              viewerRefreshRef.current?.refresh(currentViewerTabRef.current, { force: true });
++          }
++          pullStart = null;
++      };
++      document.addEventListener('touchstart', onTouchStart, { passive: true });
++      document.addEventListener('touchend', onTouchEnd, { passive: true });
++      return () => {
++          document.removeEventListener('touchstart', onTouchStart);
++          document.removeEventListener('touchend', onTouchEnd);
++      };
++  }, [role]);
+ 
+-    return () => { state.cancelled = true; };
+-  }, [db, isAuthenticated, role, userId, parentActiveStudentId, studentIds]);
++  useEffect(() => {
++      const onNotificationOpen = (event) => {
++          const tab = getViewerTabFromNotification(event.detail || {});
++          viewerRefreshRef.current?.refresh(tab, { force: true });
++      };
++      window.addEventListener('viewerNotificationOpen', onNotificationOpen);
++      return () => window.removeEventListener('viewerNotificationOpen', onNotificationOpen);
++  }, []);
+ 
+   useEffect(() => {
+       const memoMap = {};
+       students.forEach((student) => {
+           if (student?.memo) {
+               memoMap[student.id] = student.memo;
+           }
+       });
+       setStudentMemos(memoMap);
+   }, [students]);
+ 
+   const calculateClassSessionsWithClosures = useCallback(
+       (cls) => calculateClassSessions(cls, closures),
+       [closures],
+   );
+ 
+   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+   const [hasNewNotifications, setHasNewNotifications] = useState(false);
+   const [isMessengerOpen, setIsMessengerOpen] = useState(false);
+   const [hasNewMessages, setHasNewMessages] = useState(true);
+   const [pendingQuickAction, setPendingQuickAction] = useState(null);
+ 
+   const toggleSidebar = () => { setIsSidebarOpen(prev => !prev); if (!isSidebarOpen) { setHasNewNotifications(false); setIsMessengerOpen(false); } };
+   const toggleMessenger = () => { setIsMessengerOpen(prev => !prev); if (!isMessengerOpen) { setHasNewMessages(false); setIsSidebarOpen(false); } };
+ 
+@@ -2066,68 +2128,69 @@ export default function AppRoutes({ user, role, studentIds }) {
+               userId={userId}
+               students={students}
+               classes={classes}
+               homeworkAssignments={homeworkAssignments}
+               homeworkResults={homeworkResults}
+               attendanceLogs={attendanceLogs}
+               lessonLogs={lessonLogs}
+               notices={announcements}
+               tests={tests}
+               grades={grades}
+               classTestStats={classTestStats}
+               videoProgress={videoProgress}
+               onSaveVideoProgress={handleSaveVideoProgress}
+               videoMemos={videoMemos}
+               onAddMemo={handleAddVideoMemo}
+               onUpdateMemo={handleUpdateVideoMemo}
+               onDeleteMemo={handleDeleteVideoMemo}
+               externalSchedules={externalSchedules}
+               onSaveExternalSchedule={handleSaveExternalSchedule}
+               onDeleteExternalSchedule={handleDeleteExternalSchedule}
+               clinicLogs={clinicLogs}
+               closures={closures}
+               lessonReports={lessonReports}
+               onUpdateStudent={handleSaveStudent}
+               onLogout={handleLogout}
++              onViewerTabSelect={handleViewerTabSelect}
+           />
+       );
+   }
+   if (isParentRole(role)) {
+       if (parentLoading) {
+           return <div className="min-h-screen flex items-center justify-center">로딩 중...</div>;
+       }
+       if (!parentStudentIds || parentStudentIds.length === 0) {
+           return <OnboardingPage onSubmitLinkCode={handleClaimLinkCode} />;
+       }
+       if (parentStudentIds.length > 1 && !parentStudentId) {
+           return (
+               <ParentStudentPicker
+                   students={students}
+               />
+           );
+       }
+-    return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} clinicLogs={clinicLogs} videoProgress={videoProgress} lessonReports={lessonReports} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} closures={closures} />;
++    return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} clinicLogs={clinicLogs} videoProgress={videoProgress} lessonReports={lessonReports} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} closures={closures} onViewerTabSelect={handleViewerTabSelect} />;
+ }
+   
+   const managementProps = {
+     students, parents, classes, lessonLogs, attendanceLogs, workLogs, clinicLogs,
+     homeworkAssignments, homeworkResults, tests, grades, studentMemos, videoProgress, announcements,
+     paymentLogs,
+     isPaymentLogsLoading,
+     getClassesNames,
+     handleSaveStudent, handleDeleteStudent, handleSaveClass, handleSaveLessonLog, handleDeleteLessonLog,
+     handleSaveAttendance, handleSaveHomeworkAssignment, handleDeleteHomeworkAssignment, handleUpdateHomeworkResult,
+     handleSaveTest, handleDeleteTest, handleUpdateGrade, handleSaveMemo,
+     handleSaveAnnouncement, handleDeleteAnnouncement, handleSaveWorkLog, handleDeleteWorkLog, handleSaveClinicLog, handleDeleteClinicLog,
+     handleSavePayment, handleUpdatePayment, refreshPaymentLogs,
+     calculateClassSessions: calculateClassSessionsWithClosures, handlePageChange, logNotification, notifications,
+     calculateGradeComparison, calculateHomeworkStats,
+     setIsGlobalDirty, studentSearchTerm, setStudentSearchTerm, handleSendStudentNotification,
+     externalSchedules, pendingQuickAction, clearPendingQuickAction: () => setPendingQuickAction(null), onQuickAction: handleQuickAction,
+     onCreateStaffUser: isAdminRole(role) ? handleCreateStaffUser : null,
+     onCreateLinkCode: isStaffRole(role) ? handleCreateLinkCode : null,
+     handleUpdateStudentClassStatus,
+     userRole: role,
+     userId,
+     lessonReports,
+     classTestStats,
+     closures,
+diff --git a/src/data/firestoreSync.js b/src/data/firestoreSync.js
+index 1b05cb564d20f74f652664be364f6b32af6a9d2c..177bd8ec72266410c085c0fae1e3851ba1fd66f0 100644
+--- a/src/data/firestoreSync.js
++++ b/src/data/firestoreSync.js
+@@ -1163,52 +1163,58 @@ export const loadViewerDataOnce = async ({
+     db,
+     isLoggedIn,
+     userRole,
+     userId,
+     studentIds = [],
+     activeStudentId = null,
+     setStudents,
+     setClasses,
+     setLessonLogs,
+     setAttendanceLogs,
+     setClinicLogs,
+     setHomeworkAssignments,
+     setAnnouncements,
+     setTests,
+     setVideoProgress,
+     setVideoMemos,
+     setExternalSchedules,
+     setHomeworkResults,
+     setGrades,
+     setClosures,
+ 
+     // ✅ 추가: classTestStats setter (없으면 그냥 스킵)
+     setClassTestStats = null,
+     setLessonReports,
+ 
++    // When omitted this function keeps its legacy "load everything" behavior.
++    // Viewer tab refreshes pass an explicit list so unrelated collections are not read.
++    dataGroups = null,
 +
-+  test('uses previous lesson homework for performance and current lesson homework for assigned homework', () => {
-+    const progressIds = getHomeworkForPerformanceEvaluation({ homeworkAssignments, lessonLogs, student, classId: 'class-a', lessonDate: '2026-07-23' }).map((item) => item.id);
-+    const currentIds = getHomeworkForCurrentLesson({ homeworkAssignments, student, classId: 'class-a', lessonDate: '2026-07-23' }).map((item) => item.id);
+     isCancelled = () => false,
+ }) => {
++    const requestedGroups = dataGroups ? new Set(dataGroups) : null;
++    const wants = (group) => !requestedGroups || requestedGroups.has(group);
+     // ✅ helper (요청한 그대로)
+     const run = async (label, fn) => {
+         try {
+             const result = await fn();
+             console.log('[viewer] ok:', label);
+             return result;
+         } catch (e) {
+             console.error('[viewer] FAIL:', label, e);
+             throw e;
+         }
+     };
+ 
+ 
+     const isViewerRole = isViewerGroupRole(userRole) || isStudentRole(userRole);
+     if (!isLoggedIn || !db || !isViewerRole) {
+         console.log('[viewer] skip: not viewer role or not logged in');
+         return;
+     }
+ 
+     const viewerStudentDocIds = uniq(
+         (activeStudentId ? [activeStudentId] : []).concat(Array.isArray(studentIds) ? studentIds : []),
+     ).slice(0, 10);
+     const activeOnly = safeNonEmptyArray(activeStudentId ? [activeStudentId] : []);
+ 
+     async function fetchClinicReservationsForViewer({ db, studentDocIds = [], studentAuthUids = [], isCancelled = () => false }) {
+@@ -1307,51 +1313,51 @@ export const loadViewerDataOnce = async ({
+             .map((s) => ({ id: s.id, ...s.data() }))
+             .map(normalizeStudentUser);
+ 
+         if (!isCancelled()) {
+             setStudents?.(myStudents);
+         }
+ 
+         console.log('[viewer] myStudents ids =', myStudents.map((s) => s.id));
+ 
+         const scopedStudentUids = safeNonEmptyArray(Array.from(new Set([
+             ...viewerStudentDocIds,
+             ...myStudents.map((s) => s.id).filter(Boolean),
+         ])).slice(0, 10));
+ 
+         console.log('[viewer] scopedStudentUids =', scopedStudentUids);
+ 
+         const scopedStudentAuthUids = safeNonEmptyArray(Array.from(new Set([
+             ...(userRole === 'student' ? [userId] : []),
+             ...myStudents.map((s) => s.authUid).filter(Boolean),
+         ].filter(Boolean))).slice(0, 10));
+ 
+         console.log('[viewer] scopedStudentAuthUids =', scopedStudentAuthUids);
+ 
+         const activeViewerAuthUid = userId ? String(userId) : null;
+ 
+-        if (setVideoMemos) {
++        if (setVideoMemos && wants('video')) {
+             try {
+                 if (!activeViewerAuthUid) {
+                     if (!isCancelled()) setVideoMemos({});
+                 } else {
+                     const snap = await run(`videoMemos ${activeViewerAuthUid}`, () =>
+                         getDocs(
+                             query(
+                                 collection(db, 'videoMemos', activeViewerAuthUid, 'items'),
+                                 orderBy('updatedAt', 'desc'),
+                             ),
+                         ),
+                     );
+                     if (!isCancelled()) {
+                         setVideoMemos({
+                             [activeViewerAuthUid]: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+                         });
+                     }
+                 }
+             } catch (e) {
+                 console.warn('[viewer] videoMemos load failed (continue)', e);
+                 if (!isCancelled()) setVideoMemos({});
+             }
+         }
+ 
+         /* =========================
+@@ -1432,81 +1438,81 @@ export const loadViewerDataOnce = async ({
+             .map((cls) => String(cls?.id || cls?.classId || ''))
+             .filter((classId) => classId && !visibleClassIdSet.has(classId));
+ 
+         if (isDevelopment()) {
+             const hiddenReasons = {};
+             allMyClasses.forEach((cls) => {
+                 const classId = String(cls?.id || cls?.classId || '');
+                 const reason = getViewerClassVisibilityReason(cls, activeStudentForVisibility);
+                 if (classId && reason !== 'visible') hiddenReasons[classId] = reason;
+             });
+             console.log('[viewer][visibility] myClasses count =', allMyClasses.length);
+             console.log('[viewer][visibility] visibleClassIds =', visibleClassIds);
+             console.log('[viewer][visibility] hiddenClassIds =', hiddenClassIds);
+             console.log('[viewer][visibility] hiddenReasons =', hiddenReasons);
+         }
+ 
+         if (!isCancelled()) {
+             setClasses?.(myClasses);
+         }
+ 
+         console.log('[viewer] myClasses ids =', myClasses.map((c) => c.id));
+ 
+         const viewerClassIds = visibleClassIds;
+         console.log('[viewer] viewerClassIds =', viewerClassIds);
+ 
+-        void loadViewerAnnouncementsFast({
++        if (setAnnouncements && wants('announcements')) void loadViewerAnnouncementsFast({
+             db,
+             userId,
+             activeViewerAuthUid,
+             scopedStudentUids,
+             scopedStudentAuthUids,
+             myStudents,
+             viewerClassIds,
+             setAnnouncements,
+             isCancelled,
+         });
+ 
+         const lessonClassIds = visibleClassIds;
+         const detailCacheKey = viewerDetailCacheKey(lessonClassIds, activeOnly[0] || scopedStudentUids[0] || '');
+-        const hasDetailCache = viewerDetailCache.lessonLogs.has(detailCacheKey)
++        const hasDetailCache = !requestedGroups && viewerDetailCache.lessonLogs.has(detailCacheKey)
+             && viewerDetailCache.attendance.has(detailCacheKey)
+             && viewerDetailCache.homeworkResults.has(detailCacheKey)
+             && viewerDetailCache.grades.has(detailCacheKey);
+ 
+         if (hasDetailCache && !isCancelled()) {
+             setLessonLogs?.(viewerDetailCache.lessonLogs.get(detailCacheKey) || []);
+             setAttendanceLogs?.(viewerDetailCache.attendance.get(detailCacheKey) || []);
+             setHomeworkResults?.(viewerDetailCache.homeworkResults.get(detailCacheKey) || {});
+             setGrades?.(viewerDetailCache.grades.get(detailCacheKey) || {});
+             console.log('[viewer] detail cache hit', detailCacheKey);
+         }
+ 
+         /* =========================
+            attendanceLogs (fetchList)
+         ========================= */
+-        if (!hasDetailCache && nonEmpty(lessonClassIds) && (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids))) {
++        if (wants('attendance') && !hasDetailCache && nonEmpty(lessonClassIds) && (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids))) {
+             try {
+                 const studentKeySet = new Set([...scopedStudentUids, ...scopedStudentAuthUids].map(String));
+                 const attendanceDocs = await fetchClassScopedDocs({
+                     db,
+                     collectionName: 'attendanceLogs',
+                     classIds: lessonClassIds,
+                     run,
+                     isCancelled,
+                     buildQuery: (classChunk) => query(
+                         collection(db, 'attendanceLogs'),
+                         where('classId', 'in', classChunk),
+                         orderBy('date', 'desc'),
+                         limit(300),
+                     ),
+                     mapDoc: (d) => ({ id: d.id, ...d.data() }),
+                 });
+ 
+                 if (!isCancelled()) {
+                     const authUidToStudentDocId = new Map(
+                         myStudents.map((s) => [s?.authUid, s?.id]).filter(([authUid, id]) => authUid && id),
+                     );
+                     const map = new Map();
+                     attendanceDocs.forEach((log) => {
+                         const rawStudentKeys = [log?.studentId, log?.studentUid, log?.authUid].filter(Boolean).map(String);
+                         if (!rawStudentKeys.some((key) => studentKeySet.has(key))) return;
+@@ -1517,109 +1523,111 @@ export const loadViewerDataOnce = async ({
+                     const normalizedLogs = Array.from(map.values()).map((log) => {
+                         const normalized = { ...log };
+                         if (!normalized.studentId && normalized.studentUid) {
+                             normalized.studentId = normalized.studentUid;
+                         }
+                         if (!normalized.studentId && normalized.authUid) {
+                             const mappedId = authUidToStudentDocId.get(normalized.authUid);
+                             if (mappedId) {
+                                 normalized.studentId = mappedId;
+                             }
+                         }
+                         return normalized;
+                     }).sort((a, b) => {
+                         const ad = String(a?.date || '');
+                         const bd = String(b?.date || '');
+                         return bd.localeCompare(ad);
+                     });
+ 
+                     setAttendanceLogs?.(normalizedLogs);
+                     viewerDetailCache.attendance.set(detailCacheKey, normalizedLogs);
+                 }
+             } catch (e) {
+                 console.warn('[viewer] attendanceLogs visible class scoped load skipped', e);
+                 if (!isCancelled()) setAttendanceLogs?.([]);
+             }
+-        } else if (!isCancelled() && !hasDetailCache) {
++        } else if (wants('attendance') && !isCancelled() && !hasDetailCache) {
+             setAttendanceLogs?.([]);
+         }
+ 
+         /* =========================
+         clinicLogs / grades / homeworkAssignments (viewer 병렬 로딩)
+         ========================= */
+         const settled = await Promise.allSettled([
+-            fetchClinicForViewer({
++            wants('clinic') ? fetchClinicForViewer({
+                 db,
+                 studentIds: scopedStudentUids,
+                 studentAuthUids: scopedStudentAuthUids,
+                 isCancelled,
+-            }),
+-            loadGradesForViewer(db, scopedStudentUids, isCancelled, lessonClassIds),
+-            loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled, lessonClassIds),
++            }) : Promise.resolve([]),
++            wants('grades') ? loadGradesForViewer(db, scopedStudentUids, isCancelled, lessonClassIds) : Promise.resolve([]),
++            wants('homework') ? loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled, lessonClassIds) : Promise.resolve([]),
+         ]);
+ 
+         const clinicList = settled[0].status === 'fulfilled' ? settled[0].value : [];
+         if (settled[0].status === 'rejected') console.warn('[viewer] clinicForViewer failed (continue)', settled[0].reason);
+ 
+         const gradeList = settled[1].status === 'fulfilled' ? settled[1].value : [];
+         if (settled[1].status === 'rejected') console.warn('[viewer] gradesForViewer failed (continue)', settled[1].reason);
+ 
+         const hwAssignList = settled[2].status === 'fulfilled' ? settled[2].value : [];
+         if (settled[2].status === 'rejected') console.warn('[viewer] homeworkAssignmentsForViewer failed (continue)', settled[2].reason);
+ 
+         let clinicReservationsList = [];
+-        try {
++        if (wants('clinic')) try {
+             clinicReservationsList = await fetchClinicReservationsForViewer({
+                 db,
+                 studentDocIds: scopedStudentUids,
+                 studentAuthUids: scopedStudentAuthUids,
+                 isCancelled,
+             });
+         } catch (e) {
+             console.warn('[viewer] clinicReservations fetch failed (continue)', e);
+         }
+ 
+         const visibleHomeworkAssignments = filterItemsByVisibleClassIds(hwAssignList, lessonClassIds, 'homeworkAssignments').sort((a, b) => {
+             const da = a.date || a.assignedDate || a.createdAt?.toDate?.() || a.createdAt;
+             const dbb = b.date || b.assignedDate || b.createdAt?.toDate?.() || b.createdAt;
+             return new Date(dbb || 0) - new Date(da || 0);
+         });
+ 
+         if (!isCancelled()) {
+             const mergedClinic = uniqById([
+                 ...safeArray(clinicList).map((log) => normalizeClinicLog(log)),
+                 ...safeArray(clinicReservationsList).map((log) => normalizeClinicLog(log)),
+             ]);
+-            setClinicLogs?.(
++            if (wants('clinic')) setClinicLogs?.(
+                 mergedClinic.filter(
+                     (log) => Boolean(log?.studentId || log?.studentDocId),
+                 ),
+             );
+             const mappedGrades = buildGradesMap(gradeList);
+-            setGrades?.(mappedGrades);
+-            viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
+-            setHomeworkAssignments?.(visibleHomeworkAssignments);
++            if (wants('grades')) {
++                setGrades?.(mappedGrades);
++                viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
++            }
++            if (wants('homework')) setHomeworkAssignments?.(visibleHomeworkAssignments);
+         }
+ 
+         try {
+             if (setLessonReports) {
+                 const activeStudentId = scopedStudentUids[0] || null;
+                 if (!activeStudentId) {
+                     console.warn('[viewer] skip lessonReports: activeStudentId missing');
+                     if (!isCancelled()) setLessonReports([]);
+                 } else {
+                     const visibleClassIdSet = new Set((lessonClassIds || []).map(String));
+                     const reportsQuery = query(
+                         collection(db, 'lessonReports'),
+                         where('studentId', '==', activeStudentId),
+                         where('status', '==', 'sent'),
+                     );
+                     const snap = await run('lessonReports by student', () => getDocs(reportsQuery));
+                     const visibleReports = snap.docs
+                         .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+                         .filter((report) => {
+                             const classId = String(report?.classId || '');
+                             if (!classId) return true;
+                             return visibleClassIdSet.has(classId);
+                         })
+                         .sort((a, b) => String(b?.lessonDate || '').localeCompare(String(a?.lessonDate || '')));
+                     if (!isCancelled()) setLessonReports(visibleReports);
+@@ -1718,51 +1726,51 @@ export const loadViewerDataOnce = async ({
+                                     ),
+                                 );
+                                 push(snapClass2.docs);
+                             } catch (e2) {
+                                 console.warn('[viewer] closures class skipped', e2);
+                             }
+                         }
+                     }
+                 }
+ 
+                 if (!isCancelled()) {
+                     const sorted = closureDocs.sort((a, b) => {
+                         const da = String(a?.startDate || '');
+                         const dbb = String(b?.startDate || '');
+                         return dbb.localeCompare(da);
+                     });
+                     setClosures(sorted);
+                     console.log('[viewer] closures loaded =', sorted.length);
+                 }
+             } catch (e) {
+                 console.error('[viewer] FAIL: closures', e);
+                 if (!isCancelled()) setClosures([]);
+             }
+         }
+ 
+-        if (!hasDetailCache && lessonClassIds.length > 0) {
++        if (wants('lessons') && !hasDetailCache && lessonClassIds.length > 0) {
+             try {
+                 const viewerLessonLogs = await fetchClassScopedDocs({
+                     db,
+                     collectionName: 'lessonLogs',
+                     classIds: lessonClassIds,
+                     run,
+                     isCancelled,
+                     buildQuery: (classChunk) => query(
+                         collection(db, 'lessonLogs'),
+                         where('classId', 'in', classChunk),
+                         orderBy('date', 'desc'),
+                         limit(100),
+                     ),
+                 });
+                 const sortedLessonLogs = viewerLessonLogs.sort((a, b) => String(b?.date || '').localeCompare(String(a?.date || '')));
+                 setLessonLogs?.(sortedLessonLogs);
+                 viewerDetailCache.lessonLogs.set(detailCacheKey, sortedLessonLogs);
+ 
+                 // ✅ tests 로딩 + 로컬 변수에 저장
+                 viewerTests = await fetchClassScopedDocs({
+                     db,
+                     collectionName: 'tests',
+                     classIds: lessonClassIds,
+                     run,
+                     isCancelled,
+@@ -1789,67 +1797,67 @@ export const loadViewerDataOnce = async ({
+                classTestStats (viewer: student/parent)
+                - stats are optional
+                - must NOT break viewer load
+             ========================= */
+             if (setClassTestStats && Array.isArray(viewerTests)) {
+                 try {
+                     const statsMap = {};
+ 
+                     for (const t of viewerTests) {
+                         if (!t?.id || !t?.classId) continue;
+ 
+                         const statsId = `${t.classId}_${t.id}`;
+                         const snap = await getDoc(doc(db, 'classTestStats', statsId));
+ 
+                         if (snap.exists()) {
+                             statsMap[statsId] = snap.data();
+                         }
+                     }
+ 
+                     if (!isCancelled()) setClassTestStats(statsMap);
+                 } catch (e) {
+                     console.error('[viewer] FAIL: classTestStats (skip)', e);
+                     if (!isCancelled()) setClassTestStats({});
+                 }
+             }
+-        } else if (!isCancelled() && !hasDetailCache) {
++        } else if (wants('lessons') && !isCancelled() && !hasDetailCache) {
+             setLessonLogs?.([]);
+             setTests?.([]);
+             setClassTestStats?.({});
+         }
+ 
+         /* =========================
+         grades (viewer): 병렬 로딩 결과 사용
+         ========================= */
+         
+         /* =========================
+            homeworkResults (viewer scoped direct getDocs)
+            - 결과 문서에는 classId가 없을 수 있으므로 classId 조건에 의존하지 않는다.
+            - 대신 현재 viewer 학생 식별자 + 화면에 노출된 과제 id로 다시 필터링한다.
+         ========================= */
+         try {
+-            if (!hasDetailCache && scopedStudentUids.length > 0) {
++            if (wants('homework') && !hasDetailCache && scopedStudentUids.length > 0) {
+                 const mapped = {};
+                 const visibleAssignmentIds = toStringSet(
+                     visibleHomeworkAssignments.flatMap((assignment) => [
+                         assignment?.id,
+                         assignment?.assignmentId,
+                         assignment?.homeworkAssignmentId,
+                         assignment?.homeworkId,
+                     ]),
+                 );
+                 const studentIdentifierValues = uniq([
+                     ...scopedStudentUids,
+                     ...scopedStudentAuthUids,
+                     ...myStudents.flatMap((student) => [
+                         student?.id,
+                         student?.studentId,
+                         student?.studentDocId,
+                         student?.studentUid,
+                         student?.authUid,
+                         student?.uid,
+                     ]),
+                 ]);
+                 const viewerStudentKeySet = new Set(studentIdentifierValues.map(String));
+                 const authUidToStudentDocId = new Map(
+                     myStudents
+                         .filter((student) => student?.authUid && student?.id)
+@@ -1911,133 +1919,121 @@ export const loadViewerDataOnce = async ({
+                         ),
+                     )));
+                     settled.forEach((result, index) => {
+                         if (result.status === 'rejected') {
+                             console.warn(`[viewer] homeworkResults ${field} chunk(${chunks[index].length}) skipped`, result.reason);
+                             return;
+                         }
+                         result.value.docs.forEach((docSnap) => upsert({ id: docSnap.id, ...docSnap.data() }));
+                     });
+                 };
+ 
+                 if (visibleAssignmentIds.size > 0 && studentIdentifierValues.length > 0) {
+                     await Promise.allSettled([
+                         loadHomeworkResultsForField('studentId', studentIdentifierValues),
+                         loadHomeworkResultsForField('studentDocId', studentIdentifierValues),
+                         loadHomeworkResultsForField('studentUid', studentIdentifierValues),
+                         loadHomeworkResultsForField('authUid', studentIdentifierValues),
+                     ]);
+                 }
+ 
+                 if (!isCancelled()) {
+                     console.log('[viewer][homeworkResults] keys=', Object.keys(mapped));
+                     setHomeworkResults?.(mapped);
+                     viewerDetailCache.homeworkResults.set(detailCacheKey, mapped);
+                 }
+-            } else if (!isCancelled() && !hasDetailCache) {
++            } else if (wants('homework') && !isCancelled() && !hasDetailCache) {
+                 setHomeworkResults?.({});
+                 viewerDetailCache.homeworkResults.set(detailCacheKey, {});
+             }
+         } catch (e) {
+             console.warn('[viewer] homeworkResults load failed', e);
+             if (!isCancelled()) {
+                 setHomeworkResults?.({});
+                 viewerDetailCache.homeworkResults.set(detailCacheKey, {});
+             }
+         }
+ 
+         /* =========================
+         viewer 식별자 (나머지 authUid 기반 조회용)
+         ========================= */
+         const activeStudentDocId = scopedStudentUids[0] || null;
+ 
+         // ✅ 실제 데이터 키로 쓸 authUid(7MR...) (videoProgress/externalSchedules 조회용)
+         console.log('[viewer] activeStudentDocId =', activeStudentDocId);
+         console.log('[viewer] current auth.uid =', activeViewerAuthUid);
+ 
+         /* =========================
+            homeworkAssignments: 병렬 로딩 결과 사용
+         ========================= */
+         
+         /* =========================
+         videoProgress / externalSchedules  (✅ authUid 기준으로 조회)
+         ========================= */
+ 
+         // ✅ 여기부터는 authUid가 있어야 조회 가능
+-        if (activeViewerAuthUid) {
++        if (activeViewerAuthUid && (wants('video') || wants('schedule'))) {
+             try {
++                if (wants('video')) {
+                 const progressDocs = await fetchClassScopedDocs({
+                     db,
+                     collectionName: 'videoProgress',
+                     classIds: lessonClassIds,
+                     run,
+                     isCancelled,
+                     buildQuery: (classChunk) => query(
+                         collection(db, 'videoProgress'),
+                         where('studentId', '==', activeViewerAuthUid),
+                         where('classId', 'in', classChunk),
+                         limit(100),
+                     ),
+                 });
+                 if (!isCancelled()) setVideoProgress?.(progressDocs);
++                }
+             } catch (e) {
+                 console.warn('[viewer] videoProgress visible class scoped load skipped', e);
+                 if (!isCancelled()) setVideoProgress?.([]);
+             }
+ 
+             console.log('[viewer] fetch externalSchedules start', { activeViewerAuthUid });
+ 
+             try {
+-                if (activeViewerAuthUid) {
++                if (wants('schedule') && activeViewerAuthUid) {
+                     const items = await fetchList(
+                         db,
+                         'externalSchedules',
+                         setExternalSchedules,
+                         query(
+                             collection(db, 'externalSchedules'),
+                             where('authUid', '==', activeViewerAuthUid),
+                             limit(50),
+                         ),
+                         isCancelled,
+                     );
+ 
+                     console.log('[viewer] fetch externalSchedules ok', {
+                         count: Array.isArray(items) ? items.length : null,
+                         first: Array.isArray(items) ? items[0] : null,
+                     });
+                 } else {
+                     console.log('[viewer] skip externalSchedules: no activeViewerAuthUid');
+                 }
+             } catch (e) {
+                 console.error('[viewer] FAIL externalSchedules', e);
+             }
+ 
+         } else if (!isCancelled()) {
+-            setVideoProgress?.([]);
+-            setExternalSchedules?.([]);
+-        }
+-
+-        if (setClosures) {
+-            try {
+-                const snap = await getDocs(
+-                    query(collection(db, 'closures'), orderBy('startDate', 'desc'), limit(200)),
+-                );
+-                if (!isCancelled()) {
+-                    setClosures(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+-                }
+-            } catch (e) {
+-                console.warn('[viewer] closures load skipped', e);
+-                if (!isCancelled()) setClosures([]);
+-            }
++            if (wants('video')) setVideoProgress?.([]);
++            if (wants('schedule')) setExternalSchedules?.([]);
+         }
+ 
+         console.log('[viewer] COMPLETE');
+ 
+     } catch (error) {
+         console.error('[viewer] loadViewerDataOnce FAILED (top-level)', error);
+         if (String(error?.code || '').includes('permission-denied')
+             || String(error?.message || '').includes('Missing or insufficient permissions')) {
+             return;
+         }
+         throw error;
+     }
+ };
+diff --git a/src/data/viewerRefresh.js b/src/data/viewerRefresh.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..77fd3b9ed91a7beda3173eacdf56ef487693d85a
+--- /dev/null
++++ b/src/data/viewerRefresh.js
+@@ -0,0 +1,105 @@
++import { loadViewerDataOnce } from './firestoreSync';
 +
-+    expect(progressIds).toEqual(['hw-0709']);
-+    expect(currentIds).toEqual(['hw-0723']);
-+  });
++export const VIEWER_TAB_REFRESH_TTL_MS = 20_000;
++export const VIEWER_RESUME_THRESHOLD_MS = 30_000;
++
++// Realtime subscriptions are deliberately restricted to these domain streams.
++// All other viewer data must use the tab-scoped one-shot loader below.
++export const VIEWER_REALTIME_COLLECTIONS = Object.freeze([
++    'announcements',
++    'lessonReports',
++    'chatMessages',
++    'clinicReservations',
++]);
++
++export const VIEWER_TAB_DATA_GROUPS = Object.freeze({
++    home: ['attendance', 'homework', 'grades', 'clinic', 'schedule', 'announcements'],
++    class: ['lessons', 'video'],
++    report: ['attendance', 'homework', 'grades', 'clinic', 'lessons'],
++    learning: ['homework', 'grades', 'clinic', 'lessons', 'video'],
++    board: ['announcements'],
++    notices: ['announcements'],
++    schedule: ['schedule', 'clinic'],
++    messenger: [],
++    menu: ['announcements'],
++    more: ['announcements'],
++    notifications: [],
 +});
++
++const GROUP_SETTERS = Object.freeze({
++    attendance: ['setAttendanceLogs'],
++    homework: ['setHomeworkAssignments', 'setHomeworkResults'],
++    grades: ['setGrades'],
++    clinic: ['setClinicLogs'],
++    schedule: ['setExternalSchedules', 'setClosures'],
++    announcements: ['setAnnouncements'],
++    lessons: ['setLessonLogs', 'setTests', 'setClassTestStats', 'setLessonReports'],
++    video: ['setVideoProgress', 'setVideoMemos'],
++});
++const ALL_SETTER_NAMES = new Set(Object.values(GROUP_SETTERS).flat());
++
++export const normalizeViewerTab = (tab) => {
++    const value = String(tab || 'home');
++    return Object.prototype.hasOwnProperty.call(VIEWER_TAB_DATA_GROUPS, value) ? value : 'home';
++};
++
++export const getViewerTabFromNotification = (payload = {}) => {
++    const collectionName = payload.refCollection || payload.collection || payload.type || '';
++    if (/chat/i.test(collectionName)) return 'messenger';
++    if (/announcement|post|board/i.test(collectionName)) return 'board';
++    if (/schedule|reservation/i.test(collectionName)) return 'schedule';
++    if (/homework|test|grade|clinic|report/i.test(collectionName)) return 'learning';
++    return 'notifications';
++};
++
++export const createViewerRefreshController = ({
++    getContext,
++    now = () => Date.now(),
++    ttlMs = VIEWER_TAB_REFRESH_TTL_MS,
++    loader = loadViewerDataOnce,
++}) => {
++    const refreshedAt = new Map();
++    const pending = new Map();
++
++    const refresh = (requestedTab, { force = false } = {}) => {
++        const tab = normalizeViewerTab(requestedTab);
++        const groups = VIEWER_TAB_DATA_GROUPS[tab];
++        if (groups.length === 0) return Promise.resolve({ tab, skipped: 'realtime' });
++
++        const timestamp = now();
++        if (!force && timestamp - (refreshedAt.get(tab) || 0) < ttlMs) {
++            return Promise.resolve({ tab, skipped: 'ttl' });
++        }
++        if (pending.has(tab)) return pending.get(tab);
++
++        const context = getContext();
++        const baseContext = Object.fromEntries(
++            Object.entries(context).filter(([name]) => !ALL_SETTER_NAMES.has(name)),
++        );
++        const scopedSetters = {};
++        groups.forEach((group) => {
++            (GROUP_SETTERS[group] || []).forEach((name) => {
++                if (context[name]) scopedSetters[name] = context[name];
++            });
++        });
++        const task = loader({ ...baseContext, ...scopedSetters, dataGroups: groups })
++            .then(() => {
++                refreshedAt.set(tab, now());
++                return { tab, refreshed: true };
++            })
++            .finally(() => pending.delete(tab));
++        pending.set(tab, task);
++        return task;
++    };
++
++    return {
++        refresh,
++        refreshHome: (options) => refresh('home', options),
++        refreshLearning: (options) => refresh('learning', options),
++        refreshBoard: (options) => refresh('board', options),
++        refreshSchedule: (options) => refresh('schedule', options),
++        refreshMessenger: (options) => refresh('messenger', options),
++        refreshMenu: (options) => refresh('menu', options),
++        clear: () => refreshedAt.clear(),
++    };
++};
+diff --git a/src/data/viewerRefresh.test.js b/src/data/viewerRefresh.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..eadcc064092808a8b09cfaf4af534b3061fb5f62
+--- /dev/null
++++ b/src/data/viewerRefresh.test.js
+@@ -0,0 +1,46 @@
++import {
++    createViewerRefreshController,
++    getViewerTabFromNotification,
++    VIEWER_RESUME_THRESHOLD_MS,
++    VIEWER_TAB_REFRESH_TTL_MS,
++} from './viewerRefresh';
++
++test('tab refresh honors TTL and reselect force bypasses it', async () => {
++    let time = 100_000;
++    const loader = jest.fn(() => Promise.resolve());
++    const controller = createViewerRefreshController({ getContext: () => ({}), loader, now: () => time });
++    await controller.refreshHome();
++    await controller.refreshHome();
++    expect(loader).toHaveBeenCalledTimes(1);
++    await controller.refreshHome({ force: true });
++    expect(loader).toHaveBeenCalledTimes(2);
++    time += VIEWER_TAB_REFRESH_TTL_MS + 1;
++    await controller.refreshHome();
++    expect(loader).toHaveBeenCalledTimes(3);
++});
++
++test('refresh passes only setters needed by the selected tab', async () => {
++    const loader = jest.fn(() => Promise.resolve());
++    const setters = { setAnnouncements: jest.fn(), setGrades: jest.fn(), setClinicLogs: jest.fn() };
++    const controller = createViewerRefreshController({ getContext: () => setters, loader });
++    await controller.refreshBoard();
++    expect(loader.mock.calls[0][0]).toEqual(expect.objectContaining({
++        dataGroups: ['announcements'],
++        setAnnouncements: setters.setAnnouncements,
++    }));
++    expect(loader.mock.calls[0][0].setGrades).toBeUndefined();
++});
++
++test('realtime messenger does not invoke the one-shot loader', async () => {
++    const loader = jest.fn(() => Promise.resolve());
++    const controller = createViewerRefreshController({ getContext: () => ({}), loader });
++    await controller.refreshMessenger({ force: true });
++    expect(loader).not.toHaveBeenCalled();
++    expect(VIEWER_RESUME_THRESHOLD_MS).toBe(30_000);
++});
++
++test('notification collections map to their owning tabs', () => {
++    expect(getViewerTabFromNotification({ refCollection: 'homeworkAssignments' })).toBe('learning');
++    expect(getViewerTabFromNotification({ refCollection: 'announcements' })).toBe('board');
++    expect(getViewerTabFromNotification({ refCollection: 'chatRooms' })).toBe('messenger');
++});
+diff --git a/src/notifications/openNotification.js b/src/notifications/openNotification.js
+index 690aecd98d0f6ae56c68e345f023bcbb6b6f0d4b..a68ac8eab66c8c0d6c14e83395f8f8098faebe87 100644
+--- a/src/notifications/openNotification.js
++++ b/src/notifications/openNotification.js
+@@ -18,31 +18,35 @@ const parseNotificationRef = (ref) => {
+     };
+ };
+ 
+ export default async function openNotification({ notification, db = firestoreDb, onNavigate }) {
+     const refInfo = parseNotificationRef(notification?.ref) || (notification?.refCollection && notification?.refId
+         ? { refCollection: notification.refCollection, refId: notification.refId }
+         : null);
+ 
+     if (!refInfo || !db) {
+         return null;
+     }
+ 
+     const isChatNotification = refInfo.refCollection === 'chatRooms' || refInfo.refCollection === 'chats';
+     const data = isChatNotification ? null : await (async () => {
+         const docRef = doc(db, refInfo.refCollection, refInfo.refId);
+         const snapshot = await getDoc(docRef);
+         return snapshot.exists() ? snapshot.data() : null;
+     })();
+ 
+     const payload = {
+         ...refInfo,
+         data,
+         notification,
+     };
+ 
++    if (typeof window !== 'undefined') {
++        window.dispatchEvent(new CustomEvent('viewerNotificationOpen', { detail: payload }));
++    }
++
+     if (onNavigate) {
+         await onNavigate(payload);
+     }
+ 
+     return payload;
+-}
+\ No newline at end of file
++}
+diff --git a/src/notifications/pushNotifications.js b/src/notifications/pushNotifications.js
+index aa52f5cbbba51b7c4a8d7c0217818a77dd9f5c61..49934541787aae147fa0e259c1ef7a21264b3f18 100644
+--- a/src/notifications/pushNotifications.js
++++ b/src/notifications/pushNotifications.js
+@@ -28,74 +28,75 @@ const getNativePushToken = async () => {
+     const permission = await PushNotifications.requestPermissions();
+     if (permission.receive !== 'granted') return null;
+ 
+     return await new Promise((resolve) => {
+       let settled = false;
+       const finish = async (value) => {
+         if (settled) return;
+         settled = true;
+         resolve(value || null);
+       };
+       PushNotifications.addListener('registration', (token) => finish(token?.value));
+       PushNotifications.addListener('registrationError', (error) => {
+         console.warn('[push] native registration failed', error);
+         finish(null);
+       });
+       PushNotifications.register();
+       setTimeout(() => finish(null), 10000);
+     });
+   } catch (error) {
+     console.info('[push] native push plugin not ready. Install @capacitor/push-notifications and configure APNs/FCM.', error?.message || error);
+     return null;
+   }
+ };
+ 
+ export const initializePushNotificationInteractions = async (onOpenNotificationCenter) => {
+-  const openCenter = () => {
+-    if (typeof onOpenNotificationCenter === 'function') onOpenNotificationCenter();
+-    if (window.location.pathname !== '/home' || window.location.search !== '?tab=notifications') {
++  const openCenter = (payload) => {
++    if (typeof onOpenNotificationCenter === 'function') {
++      onOpenNotificationCenter(payload);
++    } else if (window.location.pathname !== '/home' || window.location.search !== '?tab=notifications') {
+       window.history.pushState({}, '', '/home?tab=notifications');
+       window.dispatchEvent(new PopStateEvent('popstate'));
+     }
+   };
+ 
+   if (isCapacitorNativeEnvironment()) {
+     try {
+       const importNativePlugin = new Function('specifier', 'return import(specifier)');
+       const mod = await importNativePlugin('@capacitor/push-notifications');
+       const PushNotifications = mod.PushNotifications;
+       await PushNotifications.addListener('pushNotificationReceived', (notification) => {
+         console.info('[push] foreground notification received', notification);
+       });
+-      await PushNotifications.addListener('pushNotificationActionPerformed', () => openCenter());
++      await PushNotifications.addListener('pushNotificationActionPerformed', (action) => openCenter(action?.notification?.data));
+     } catch (error) {
+       console.info('[push] native push listeners unavailable', error?.message || error);
+     }
+     return;
+   }
+ 
+-  window.addEventListener('appNotificationClick', openCenter);
++  window.addEventListener('appNotificationClick', (event) => openCenter(event?.detail));
+ };
+ 
+ export const registerDevicePushToken = async (authUid) => {
+   const uid = String(authUid || '').trim();
+   if (!uid) return null;
+   const token = isCapacitorNativeEnvironment() ? await getNativePushToken() : await getBrowserPushToken();
+   if (!token) return null;
+   await setDoc(doc(db, 'users', uid, 'fcmTokens', token), {
+     token,
+     platform: isCapacitorNativeEnvironment() ? 'capacitor' : 'web',
+     updatedAt: serverTimestamp(),
+   }, { merge: true });
+   return token;
+ };
+ 
+ export const unregisterDevicePushToken = async (authUid, token) => {
+   const uid = String(authUid || '').trim();
+   if (!uid || !token) return;
+   await deleteDoc(doc(db, 'users', uid, 'fcmTokens', token));
+ };
+ 
+ export const PUSH_SETUP_TODOS = [
+   'Firebase Console: iOS 앱에 APNs Authentication Key 등록',
+   'Xcode: Signing & Capabilities에서 Push Notifications 및 Background Modes(Remote notifications) 활성화',
+   '앱 패키지: @capacitor/push-notifications 설치 후 npx cap sync 실행',
+diff --git a/src/pages/ParentHome.jsx b/src/pages/ParentHome.jsx
+index 63d4618e3cba188719cb98e6ab9665d482c658f7..59655787d60020a0e578be6cdbe801f10345bf51 100644
+--- a/src/pages/ParentHome.jsx
++++ b/src/pages/ParentHome.jsx
+@@ -476,50 +476,51 @@ const ParentDashboard = ({
+                                 }`}>{item.text}</span>
+                                 <Icon name="chevronRight" className={`w-4 h-4 ${
+                                     item.type === 'danger' ? 'text-red-300' : 'text-orange-300'
+                                 }`} />
+                             </div>
+                         ))}
+                     </div>
+                 </section>
+             )}
+         </div>
+     );
+ };
+ 
+ // --- 메인 페이지 컴포넌트 ---
+ export default function ParentHome({
+     userId, students, parents = [], classes, homeworkAssignments, homeworkResults,
+     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
+     videoProgress, clinicLogs, lessonReports = [], onLogout,
+     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
+     closures,
+     masterView = false,
+     masterViewStudentId = '',
+     masterViewStudentAuthUid = '',
+     readOnly = false,
+     embedded = false,
++    onViewerTabSelect,
+ }) {
+     const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
+     // 1. 자녀 데이터 및 선택 로직
+     const initialStudent = students.find(s => s.id === activeStudentId);
+     const [activeChildId, setActiveChildId] = useState(activeStudentId);
+     const [linkedParentDocId, setLinkedParentDocId] = useState('');
+     const pendingStudentSwitchRef = useRef(null);
+     const activeChild = students.find(s => s.id === activeChildId) || initialStudent;
+     const activeChildName = activeChild?.name || '학생';
+     const activeChildSchool = activeChild?.school || '학교 정보 없음';
+     const activeChildGrade = getStudentGradeLabel(activeChild);
+     // 2. 데이터 필터링
+     const rawMyClasses = useMemo(() => {
+         if (!Array.isArray(classes) || !activeChildId) return [];
+         const childClassIds = new Set([
+             ...(Array.isArray(activeChild?.classIds) ? activeChild.classIds : []),
+             ...(Array.isArray(activeChild?.classes) ? activeChild.classes.filter((item) => typeof item === 'string') : []),
+         ].map(String));
+         return classes.filter((c) => {
+             const classId = String(c?.id || c?.classId || '');
+             return (c.students || []).includes(activeChildId) || childClassIds.has(classId);
+         });
+     }, [classes, activeChildId, activeChild?.classIds, activeChild?.classes]);
+     const visibleClassIds = useMemo(() => getViewerVisibleClassIds(rawMyClasses, activeChild), [rawMyClasses, activeChild]);
+     const visibleClassIdSet = useMemo(() => new Set(visibleClassIds), [visibleClassIds]);
+@@ -608,68 +609,69 @@ export default function ParentHome({
+     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
+     const [selectedClassroomId, _setSelectedClassroomId] = useState(readClassroomFromUrl());
+     // ✅ 리포트 뷰 상태
+     const [learningMode, setLearningMode] = useState('regular'); // 'regular' | 'clinic'
+     const [learningSubTab, setLearningSubTab] = useState('homework');
+     const [expandedHomeworkDetails, setExpandedHomeworkDetails] = useState({});
+     const [classFilter, setClassFilter] = useState('ongoing'); // 기본: 진행중
+     const [selectedReportId, _setSelectedReportId] = useState(readReportFromUrl());
+     const [boardBackTab, setBoardBackTab] = useState('home');
+     const [moreView, setMoreView] = useState('menu');
+ 
+     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
+     useEffect(() => {
+         const nextTab = readTabFromUrl();
+         const nextClassroomId = readClassroomFromUrl();
+         const nextReportId = readReportFromUrl();
+ 
+         if (nextTab !== activeTab) _setActiveTab(nextTab);
+         if ((nextClassroomId || null) !== (selectedClassroomId || null)) _setSelectedClassroomId(nextClassroomId || null);
+         if ((nextReportId || null) !== (selectedReportId || null)) _setSelectedReportId(nextReportId || null);
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, [searchParams]);
+ 
+     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
+     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
++        onViewerTabSelect?.(tab, { reselected: tab === activeTab });
+         _setActiveTab(tab);
+         requestAnimationFrame(() => {
+             mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+             if (!embedded) window.scrollTo({ top: 0, behavior: 'smooth' });
+         });
+         if (embedded) return;
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', tab);
+ 
+             // 탭 이동 시, 상세 화면 파라미터 정리 (정책: report 탭이 아니면 상세 파라미터 제거)
+             if (tab !== 'report') {
+                 next.delete('reportId');
+                 next.delete('classroomId');
+             }
+             return next;
+         }, { replace });
+-    }, [setSearchParams, embedded]);
++    }, [setSearchParams, embedded, activeTab, onViewerTabSelect]);
+ 
+     const setSelectedClassroomId = useCallback((classId, { replace = false } = {}) => {
+         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);
+         _setSelectedClassroomId(value);
+         // classroom 선택은 report 탭 컨텍스트
+         if (value) _setActiveTab('report');
+         if (embedded) return;
+ 
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             if (value) {
+                 next.set('tab', 'report');
+                 next.set('classroomId', value);
+                 next.delete('reportId');
+             } else {
+                 next.delete('classroomId');
+             }
+             return next;
+         }, { replace });
+     }, [setSearchParams, embedded]);
+ 
+     const setSelectedReportId = useCallback((reportId, { replace = false } = {}) => {
+         const value = reportId === null || reportId === undefined || reportId === '' ? null : String(reportId);
+         _setSelectedReportId(value);
+         // report 선택은 report 탭 컨텍스트
+diff --git a/src/pages/StudentHome.jsx b/src/pages/StudentHome.jsx
+index 0682dfee821dded7dd1294bfab29ea4b4e1e704d..30f623f4668765d2da3bc4bc6f2da2f5af81ea8b 100644
+--- a/src/pages/StudentHome.jsx
++++ b/src/pages/StudentHome.jsx
+@@ -176,104 +176,106 @@ const getNoticeAudienceValues = (notice = {}) => [
+     ...(Array.isArray(notice?.studentIds) ? notice.studentIds : []),
+ ].filter(Boolean).map(String);
+ 
+ const isNoticeVisibleToStudent = ({ notice, studentKeys, classIds }) => {
+     const audience = getNoticeAudienceValues(notice);
+     if (audience.length > 0 && audience.some((value) => studentKeys.has(value))) return true;
+     const noticeClassIds = getNoticeClassIds(notice);
+     if (noticeClassIds.length > 0) return noticeClassIds.some((value) => classIds.has(value));
+     return audience.length === 0;
+ };
+ 
+ export default function StudentHome({
+     student, studentId, userId, students, classes, homeworkAssignments, homeworkResults,
+     attendanceLogs, lessonLogs, notices, tests, grades, classTestStats,
+     videoProgress, onSaveVideoProgress, videoMemos, onAddMemo, onUpdateMemo, onDeleteMemo,
+     externalSchedules, onSaveExternalSchedule, onDeleteExternalSchedule,
+     clinicLogs, onUpdateStudent,
+     closures,
+     lessonReports = [],
+     onLogout,
+     masterView = false,
+     masterViewStudentId = '',
+     masterViewStudentAuthUid = '',
+     readOnly = false,
+     embedded = false,
++    onViewerTabSelect,
+ }) {
+     // ✅ URL(querystring)로 탭/상세 상태를 동기화해서 "뒤로가기"가 탭 전환/이전 화면으로 동작하게 함
+     const [searchParams, setSearchParams] = useSearchParams();
+ 
+     const readTabFromUrl = () => {
+         if (['formula', 'book'].includes(searchParams.get('mode'))) return 'class';
+         const tab = searchParams.get('tab') || 'home';
+         return tab === 'report' ? 'class' : tab;
+     };
+     const readSubTabFromUrl = () => searchParams.get('subTab') || 'homework';
+     const readClassIdFromUrl = () => searchParams.get('classId');
+     const readClassroomModeFromUrl = () => ['formula', 'book'].includes(searchParams.get('mode')) ? 'formula' : 'class';
+ 
+     const [activeTab, _setActiveTab] = useState(readTabFromUrl());
+     const [initialLearningTab, _setInitialLearningTab] = useState(readSubTabFromUrl());
+     const [selectedClassId, _setSelectedClassId] = useState(readClassIdFromUrl());
+     const [classroomMode, _setClassroomMode] = useState(readClassroomModeFromUrl());
+ 
+     // ✅ URL -> state (브라우저 뒤로/앞으로로 URL이 바뀌면 화면도 따라감)
+     useEffect(() => {
+         const nextTab = readTabFromUrl();
+         const nextSubTab = readSubTabFromUrl();
+         const nextClassId = readClassIdFromUrl();
+         const nextClassroomMode = readClassroomModeFromUrl();
+ 
+         if (nextTab !== activeTab) _setActiveTab(nextTab);
+         if (nextSubTab !== initialLearningTab) _setInitialLearningTab(nextSubTab);
+         if ((nextClassId || null) !== (selectedClassId || null)) _setSelectedClassId(nextClassId || null);
+         if (nextClassroomMode !== classroomMode) _setClassroomMode(nextClassroomMode);
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+     }, [searchParams]);
+ 
+     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
+     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
++        onViewerTabSelect?.(tab, { reselected: tab === activeTab });
+         _setActiveTab(tab);
+         if (embedded) return;
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', tab);
+ 
+             // learning 이외 탭으로 이동하면 subTab은 정리 (원하면 정책 변경 가능)
+             if (tab !== 'learning') next.delete('subTab');
+ 
+             // 탭 이동 시 classId는 유지하지 않음(클래스 화면은 별도 상태)
+             if (tab !== 'class') next.delete('classId');
+             if (tab !== 'class') {
+                 next.delete('mode');
+                 next.delete('conceptId');
+                 _setClassroomMode('class');
+             }
+ 
+             return next;
+         }, { replace });
+-    }, [setSearchParams, embedded]);
++    }, [setSearchParams, embedded, activeTab, onViewerTabSelect]);
+     const setClassroomMode = useCallback((mode, { replace = false } = {}) => {
+         const value = mode === 'formula' ? 'formula' : 'class';
+         _setClassroomMode(value);
+         _setActiveTab('class');
+         _setSelectedClassId(null);
+         if (embedded) return;
+         setSearchParams(prev => {
+             const next = new URLSearchParams(prev);
+             next.set('tab', 'class');
+             next.delete('classId');
+             next.delete('subTab');
+             if (value === 'formula') next.set('mode', 'book');
+             else {
+                 next.delete('mode');
+                 next.delete('conceptId');
+             }
+             return next;
+         }, { replace });
+     }, [setSearchParams, embedded]);
+ 
+     const setInitialLearningTab = useCallback((subTab, { replace = false } = {}) => {
+         const value = subTab || 'homework';
+         _setInitialLearningTab(value);
+         _setActiveTab('learning');
+         if (embedded) return;

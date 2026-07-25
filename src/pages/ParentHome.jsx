@@ -498,6 +498,7 @@ export default function ParentHome({
     masterViewStudentAuthUid = '',
     readOnly = false,
     embedded = false,
+    onViewerTabSelect,
 }) {
     const { activeStudentId, studentIds, setActiveStudentId } = useParentContext();
     // 1. 자녀 데이터 및 선택 로직
@@ -630,6 +631,7 @@ export default function ParentHome({
 
     // ✅ state -> URL (앱 내부 동작은 아래 래퍼 함수를 통해서만 변경)
     const setActiveTab = useCallback((tab, { replace = false } = {}) => {
+        onViewerTabSelect?.(tab, { reselected: tab === activeTab });
         _setActiveTab(tab);
         requestAnimationFrame(() => {
             mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -647,7 +649,7 @@ export default function ParentHome({
             }
             return next;
         }, { replace });
-    }, [setSearchParams, embedded]);
+    }, [setSearchParams, embedded, activeTab, onViewerTabSelect]);
 
     const setSelectedClassroomId = useCallback((classId, { replace = false } = {}) => {
         const value = classId === null || classId === undefined || classId === '' ? null : String(classId);

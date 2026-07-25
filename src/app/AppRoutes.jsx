@@ -45,7 +45,7 @@ import {
     isViewerGroupRole,
 } from '../constants/roles';
 import { db, functions } from '../firebase/client';
-import { invalidateStaffDataCache, loadStaffDataOnce, loadViewerDataOnce } from '../data/firestoreSync';
+import { invalidateStaffDataCache, loadStaffDataOnce } from '../data/firestoreSync';
 import { createLinkCode, createStaffUser } from '../admin/staffService';
 import { claimStudentLinkCode } from '../parent/linkCodeService';
 import { useParentContext } from '../parent';
@@ -75,6 +75,12 @@ import {
 } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { initializePushNotificationInteractions, registerDevicePushToken, unregisterDevicePushToken } from '../notifications/pushNotifications';
+import { App as CapacitorApp } from '@capacitor/app';
+import {
+    createViewerRefreshController,
+    getViewerTabFromNotification,
+    VIEWER_RESUME_THRESHOLD_MS,
+} from '../data/viewerRefresh';
 
 const PAGE_ROUTES = {
     home: '/home',
@@ -211,9 +217,14 @@ export default function AppRoutes({ user, role, studentIds }) {
   }, [userId]);
 
 
+  const viewerRefreshRef = useRef(null);
+  const currentViewerTabRef = useRef('home');
+
   useEffect(() => {
-      initializePushNotificationInteractions(() => {
-          navigate('/home?tab=notifications');
+      initializePushNotificationInteractions((payload) => {
+          const targetTab = getViewerTabFromNotification(payload || {});
+          viewerRefreshRef.current?.refresh(targetTab, { force: true });
+          navigate(`/home?tab=${targetTab}`);
       }).catch((error) => console.warn('[push] notification interaction setup failed', error));
   }, [navigate]);
 
@@ -300,48 +311,99 @@ export default function AppRoutes({ user, role, studentIds }) {
     };
   }, [db, isAuthenticated, role, page]);
 
-  // ✅✅✅ [수정] 학생(STUDENT)도 viewer 로딩을 타도록
+  const viewerContextRef = useRef({});
+  viewerContextRef.current = {
+      db,
+      isLoggedIn: isAuthenticated,
+      userRole: role,
+      userId,
+      studentIds: studentIds || [],
+      activeStudentId: isParentRole(role) ? parentActiveStudentId : null,
+      setStudents,
+      setClasses,
+      setLessonLogs,
+      setAttendanceLogs,
+      setClinicLogs,
+      setHomeworkAssignments,
+      setAnnouncements,
+      setTests,
+      setVideoProgress,
+      setVideoMemos,
+      setExternalSchedules,
+      setHomeworkResults,
+      setGrades,
+      setClosures,
+      setClassTestStats,
+      setLessonReports,
+  };
+
+  if (!viewerRefreshRef.current) {
+      viewerRefreshRef.current = createViewerRefreshController({ getContext: () => viewerContextRef.current });
+  }
+
+  const activeViewerTab = useMemo(
+      () => new URLSearchParams(location.search).get('tab') || 'home',
+      [location.search],
+  );
+  currentViewerTabRef.current = activeViewerTab;
+
+  // Login, linked-child change, and URL tab entry load only the active tab's slice.
   useEffect(() => {
     if (!isAuthenticated || !role) return;
+    if (!(isViewerGroupRole(role) || isStudentRole(role))) return;
+    viewerRefreshRef.current.refresh(activeViewerTab);
+  }, [isAuthenticated, role, userId, parentActiveStudentId, studentIds, activeViewerTab]);
 
-    const shouldLoadViewerData = isViewerGroupRole(role) || isStudentRole(role);
-    if (!shouldLoadViewerData) return;
+  const handleViewerTabSelect = useCallback((tab, { reselected = false } = {}) => {
+      viewerRefreshRef.current?.refresh(tab, { force: reselected });
+      if (reselected && typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
-    const state = { cancelled: false };
+  useEffect(() => {
+      if (!(isViewerGroupRole(role) || isStudentRole(role))) return undefined;
+      let backgroundedAt = null;
+      const listener = CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+          if (!isActive) {
+              backgroundedAt = Date.now();
+              return;
+          }
+          if (backgroundedAt && Date.now() - backgroundedAt >= VIEWER_RESUME_THRESHOLD_MS) {
+              viewerRefreshRef.current?.refresh(currentViewerTabRef.current);
+          }
+          backgroundedAt = null;
+      });
+      return () => { listener.then((handle) => handle.remove()); };
+  }, [role]);
 
-    // 학생이면 본인 uid만 대상으로 로딩
-    const resolvedStudentIds = isStudentRole(role)
-      ? (studentIds || [])
-      : (studentIds || []);
+  useEffect(() => {
+      if (!(isViewerGroupRole(role) || isStudentRole(role))) return undefined;
+      let pullStart = null;
+      const onTouchStart = (event) => {
+          if (window.scrollY <= 0) pullStart = event.touches?.[0]?.clientY ?? null;
+      };
+      const onTouchEnd = (event) => {
+          const end = event.changedTouches?.[0]?.clientY;
+          if (pullStart !== null && end - pullStart >= 80) {
+              viewerRefreshRef.current?.refresh(currentViewerTabRef.current, { force: true });
+          }
+          pullStart = null;
+      };
+      document.addEventListener('touchstart', onTouchStart, { passive: true });
+      document.addEventListener('touchend', onTouchEnd, { passive: true });
+      return () => {
+          document.removeEventListener('touchstart', onTouchStart);
+          document.removeEventListener('touchend', onTouchEnd);
+      };
+  }, [role]);
 
-    loadViewerDataOnce({
-        db,
-        isLoggedIn: isAuthenticated,
-        userRole: role,
-        userId,
-        studentIds: resolvedStudentIds,
-        activeStudentId: isParentRole(role) ? parentActiveStudentId : null,
-        setStudents,
-        setClasses,
-        setLessonLogs,
-        setAttendanceLogs,
-        setClinicLogs,
-        setHomeworkAssignments,
-        setAnnouncements,
-        setTests,
-        setVideoProgress,
-        setVideoMemos,
-        setExternalSchedules,
-        setHomeworkResults,
-        setGrades,
-        setClosures,
-        setClassTestStats,
-        setLessonReports,
-        isCancelled: () => state.cancelled,
-    });
-
-    return () => { state.cancelled = true; };
-  }, [db, isAuthenticated, role, userId, parentActiveStudentId, studentIds]);
+  useEffect(() => {
+      const onNotificationOpen = (event) => {
+          const tab = getViewerTabFromNotification(event.detail || {});
+          viewerRefreshRef.current?.refresh(tab, { force: true });
+      };
+      window.addEventListener('viewerNotificationOpen', onNotificationOpen);
+      return () => window.removeEventListener('viewerNotificationOpen', onNotificationOpen);
+  }, []);
 
   useEffect(() => {
       const memoMap = {};
@@ -2088,6 +2150,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               lessonReports={lessonReports}
               onUpdateStudent={handleSaveStudent}
               onLogout={handleLogout}
+              onViewerTabSelect={handleViewerTabSelect}
           />
       );
   }
@@ -2105,7 +2168,7 @@ export default function AppRoutes({ user, role, studentIds }) {
               />
           );
       }
-    return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} clinicLogs={clinicLogs} videoProgress={videoProgress} lessonReports={lessonReports} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} closures={closures} />;
+    return <ParentHome userId={userId} students={students} classes={classes} homeworkAssignments={homeworkAssignments} homeworkResults={homeworkResults} attendanceLogs={attendanceLogs} lessonLogs={lessonLogs} notices={announcements} tests={tests} grades={grades} classTestStats={classTestStats} clinicLogs={clinicLogs} videoProgress={videoProgress} lessonReports={lessonReports} onLogout={handleLogout} externalSchedules={externalSchedules} onSaveExternalSchedule={handleSaveExternalSchedule} onDeleteExternalSchedule={handleDeleteExternalSchedule} closures={closures} onViewerTabSelect={handleViewerTabSelect} />;
 }
   
   const managementProps = {

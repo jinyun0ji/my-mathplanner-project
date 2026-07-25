@@ -1185,8 +1185,14 @@ export const loadViewerDataOnce = async ({
     setClassTestStats = null,
     setLessonReports,
 
+    // When omitted this function keeps its legacy "load everything" behavior.
+    // Viewer tab refreshes pass an explicit list so unrelated collections are not read.
+    dataGroups = null,
+
     isCancelled = () => false,
 }) => {
+    const requestedGroups = dataGroups ? new Set(dataGroups) : null;
+    const wants = (group) => !requestedGroups || requestedGroups.has(group);
     // ✅ helper (요청한 그대로)
     const run = async (label, fn) => {
         try {
@@ -1329,7 +1335,7 @@ export const loadViewerDataOnce = async ({
 
         const activeViewerAuthUid = userId ? String(userId) : null;
 
-        if (setVideoMemos) {
+        if (setVideoMemos && wants('video')) {
             try {
                 if (!activeViewerAuthUid) {
                     if (!isCancelled()) setVideoMemos({});
@@ -1454,7 +1460,7 @@ export const loadViewerDataOnce = async ({
         const viewerClassIds = visibleClassIds;
         console.log('[viewer] viewerClassIds =', viewerClassIds);
 
-        void loadViewerAnnouncementsFast({
+        if (setAnnouncements && wants('announcements')) void loadViewerAnnouncementsFast({
             db,
             userId,
             activeViewerAuthUid,
@@ -1468,7 +1474,7 @@ export const loadViewerDataOnce = async ({
 
         const lessonClassIds = visibleClassIds;
         const detailCacheKey = viewerDetailCacheKey(lessonClassIds, activeOnly[0] || scopedStudentUids[0] || '');
-        const hasDetailCache = viewerDetailCache.lessonLogs.has(detailCacheKey)
+        const hasDetailCache = !requestedGroups && viewerDetailCache.lessonLogs.has(detailCacheKey)
             && viewerDetailCache.attendance.has(detailCacheKey)
             && viewerDetailCache.homeworkResults.has(detailCacheKey)
             && viewerDetailCache.grades.has(detailCacheKey);
@@ -1484,7 +1490,7 @@ export const loadViewerDataOnce = async ({
         /* =========================
            attendanceLogs (fetchList)
         ========================= */
-        if (!hasDetailCache && nonEmpty(lessonClassIds) && (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids))) {
+        if (wants('attendance') && !hasDetailCache && nonEmpty(lessonClassIds) && (nonEmpty(scopedStudentUids) || nonEmpty(scopedStudentAuthUids))) {
             try {
                 const studentKeySet = new Set([...scopedStudentUids, ...scopedStudentAuthUids].map(String));
                 const attendanceDocs = await fetchClassScopedDocs({
@@ -1539,7 +1545,7 @@ export const loadViewerDataOnce = async ({
                 console.warn('[viewer] attendanceLogs visible class scoped load skipped', e);
                 if (!isCancelled()) setAttendanceLogs?.([]);
             }
-        } else if (!isCancelled() && !hasDetailCache) {
+        } else if (wants('attendance') && !isCancelled() && !hasDetailCache) {
             setAttendanceLogs?.([]);
         }
 
@@ -1547,14 +1553,14 @@ export const loadViewerDataOnce = async ({
         clinicLogs / grades / homeworkAssignments (viewer 병렬 로딩)
         ========================= */
         const settled = await Promise.allSettled([
-            fetchClinicForViewer({
+            wants('clinic') ? fetchClinicForViewer({
                 db,
                 studentIds: scopedStudentUids,
                 studentAuthUids: scopedStudentAuthUids,
                 isCancelled,
-            }),
-            loadGradesForViewer(db, scopedStudentUids, isCancelled, lessonClassIds),
-            loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled, lessonClassIds),
+            }) : Promise.resolve([]),
+            wants('grades') ? loadGradesForViewer(db, scopedStudentUids, isCancelled, lessonClassIds) : Promise.resolve([]),
+            wants('homework') ? loadHomeworkAssignmentsForViewer(db, scopedStudentUids, isCancelled, lessonClassIds) : Promise.resolve([]),
         ]);
 
         const clinicList = settled[0].status === 'fulfilled' ? settled[0].value : [];
@@ -1567,7 +1573,7 @@ export const loadViewerDataOnce = async ({
         if (settled[2].status === 'rejected') console.warn('[viewer] homeworkAssignmentsForViewer failed (continue)', settled[2].reason);
 
         let clinicReservationsList = [];
-        try {
+        if (wants('clinic')) try {
             clinicReservationsList = await fetchClinicReservationsForViewer({
                 db,
                 studentDocIds: scopedStudentUids,
@@ -1589,15 +1595,17 @@ export const loadViewerDataOnce = async ({
                 ...safeArray(clinicList).map((log) => normalizeClinicLog(log)),
                 ...safeArray(clinicReservationsList).map((log) => normalizeClinicLog(log)),
             ]);
-            setClinicLogs?.(
+            if (wants('clinic')) setClinicLogs?.(
                 mergedClinic.filter(
                     (log) => Boolean(log?.studentId || log?.studentDocId),
                 ),
             );
             const mappedGrades = buildGradesMap(gradeList);
-            setGrades?.(mappedGrades);
-            viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
-            setHomeworkAssignments?.(visibleHomeworkAssignments);
+            if (wants('grades')) {
+                setGrades?.(mappedGrades);
+                viewerDetailCache.grades.set(detailCacheKey, mappedGrades);
+            }
+            if (wants('homework')) setHomeworkAssignments?.(visibleHomeworkAssignments);
         }
 
         try {
@@ -1740,7 +1748,7 @@ export const loadViewerDataOnce = async ({
             }
         }
 
-        if (!hasDetailCache && lessonClassIds.length > 0) {
+        if (wants('lessons') && !hasDetailCache && lessonClassIds.length > 0) {
             try {
                 const viewerLessonLogs = await fetchClassScopedDocs({
                     db,
@@ -1811,7 +1819,7 @@ export const loadViewerDataOnce = async ({
                     if (!isCancelled()) setClassTestStats({});
                 }
             }
-        } else if (!isCancelled() && !hasDetailCache) {
+        } else if (wants('lessons') && !isCancelled() && !hasDetailCache) {
             setLessonLogs?.([]);
             setTests?.([]);
             setClassTestStats?.({});
@@ -1827,7 +1835,7 @@ export const loadViewerDataOnce = async ({
            - 대신 현재 viewer 학생 식별자 + 화면에 노출된 과제 id로 다시 필터링한다.
         ========================= */
         try {
-            if (!hasDetailCache && scopedStudentUids.length > 0) {
+            if (wants('homework') && !hasDetailCache && scopedStudentUids.length > 0) {
                 const mapped = {};
                 const visibleAssignmentIds = toStringSet(
                     visibleHomeworkAssignments.flatMap((assignment) => [
@@ -1933,7 +1941,7 @@ export const loadViewerDataOnce = async ({
                     setHomeworkResults?.(mapped);
                     viewerDetailCache.homeworkResults.set(detailCacheKey, mapped);
                 }
-            } else if (!isCancelled() && !hasDetailCache) {
+            } else if (wants('homework') && !isCancelled() && !hasDetailCache) {
                 setHomeworkResults?.({});
                 viewerDetailCache.homeworkResults.set(detailCacheKey, {});
             }
@@ -1963,8 +1971,9 @@ export const loadViewerDataOnce = async ({
         ========================= */
 
         // ✅ 여기부터는 authUid가 있어야 조회 가능
-        if (activeViewerAuthUid) {
+        if (activeViewerAuthUid && (wants('video') || wants('schedule'))) {
             try {
+                if (wants('video')) {
                 const progressDocs = await fetchClassScopedDocs({
                     db,
                     collectionName: 'videoProgress',
@@ -1979,6 +1988,7 @@ export const loadViewerDataOnce = async ({
                     ),
                 });
                 if (!isCancelled()) setVideoProgress?.(progressDocs);
+                }
             } catch (e) {
                 console.warn('[viewer] videoProgress visible class scoped load skipped', e);
                 if (!isCancelled()) setVideoProgress?.([]);
@@ -1987,7 +1997,7 @@ export const loadViewerDataOnce = async ({
             console.log('[viewer] fetch externalSchedules start', { activeViewerAuthUid });
 
             try {
-                if (activeViewerAuthUid) {
+                if (wants('schedule') && activeViewerAuthUid) {
                     const items = await fetchList(
                         db,
                         'externalSchedules',
@@ -2012,22 +2022,8 @@ export const loadViewerDataOnce = async ({
             }
 
         } else if (!isCancelled()) {
-            setVideoProgress?.([]);
-            setExternalSchedules?.([]);
-        }
-
-        if (setClosures) {
-            try {
-                const snap = await getDocs(
-                    query(collection(db, 'closures'), orderBy('startDate', 'desc'), limit(200)),
-                );
-                if (!isCancelled()) {
-                    setClosures(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-                }
-            } catch (e) {
-                console.warn('[viewer] closures load skipped', e);
-                if (!isCancelled()) setClosures([]);
-            }
+            if (wants('video')) setVideoProgress?.([]);
+            if (wants('schedule')) setExternalSchedules?.([]);
         }
 
         console.log('[viewer] COMPLETE');
