@@ -6,8 +6,11 @@ export const getStudentKeyCandidates = (studentOrRowLike) => {
   } else if (typeof studentOrRowLike === 'object') {
     raw.push(
       studentOrRowLike.id,
+      studentOrRowLike.docId,
+      studentOrRowLike.userDocId,
       studentOrRowLike.uid,
       studentOrRowLike.authUid,
+      studentOrRowLike.studentAuthUid,
       studentOrRowLike.studentId,
       studentOrRowLike.studentUid,
       studentOrRowLike.studentDocId,
