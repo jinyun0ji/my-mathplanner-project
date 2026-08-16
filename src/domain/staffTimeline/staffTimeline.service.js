@@ -78,7 +78,7 @@ export const fetchStaffTimelineByStudent = async (
         student.studentUid,
         student.userUid,
     ].filter(Boolean).map(String)));
-    const queryLimit = Math.min(limitCount, 20);
+    const queryLimit = limitCount == null ? null : Math.max(1, Number(limitCount));
     const primary = student.id ? [['studentId', String(student.id)]] : [];
     const fallbackFields = ['studentDocId', 'studentUid', 'authUid'];
     const fallback = fallbackFields.flatMap((field) => candidateValues.map((value) => [field, value]));
@@ -86,11 +86,9 @@ export const fetchStaffTimelineByStudent = async (
         if (process.env.NODE_ENV !== 'production') {
             console.log('[staffTimeline] query shape', { field, value, limit: queryLimit });
         }
-        const snapshot = await getDocs(query(
-            collection(firestoreDb, STAFF_TIMELINE_COLLECTION),
-            where(field, '==', value),
-            limit(queryLimit),
-        ));
+        const constraints = [where(field, '==', value)];
+        if (queryLimit) constraints.push(limit(queryLimit));
+        const snapshot = await getDocs(query(collection(firestoreDb, STAFF_TIMELINE_COLLECTION), ...constraints));
         return normalizeSnapshot(snapshot);
     }));
 
@@ -103,11 +101,12 @@ export const fetchStaffTimelineByStudent = async (
         const aMillis = a?.createdAt?.toMillis?.() || new Date(a?.createdAt || 0).getTime() || 0;
         const bMillis = b?.createdAt?.toMillis?.() || new Date(b?.createdAt || 0).getTime() || 0;
         return bMillis - aMillis;
-    }).slice(0, queryLimit);
+    });
+    const matchedWithinLimit = queryLimit ? matched.slice(0, queryLimit) : matched;
     if (process.env.NODE_ENV !== 'production') {
-        console.log('[staffTimeline] matched count', matched.length);
+        console.log('[staffTimeline] matched count', matchedWithinLimit.length);
     }
-    return matched;
+    return matchedWithinLimit;
 };
 
 export const fetchClinicTimelineThreads = async (firestoreDb, sourceDocIds = []) => {

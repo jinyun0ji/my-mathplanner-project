@@ -1,7 +1,10 @@
 .print-only { display: none; }
 
 @media print {
+  @page { size: A4 portrait; margin: 10mm; }
+
   body * { visibility: hidden !important; }
+  .print-only { display: block !important; }
   .print-root, .print-root * { visibility: visible !important; }
   .student-detail-print,
   .student-detail-print * { visibility: visible !important; }
@@ -34,6 +37,53 @@
     top: 0;
     width: 100%;
   }
+
+  .student-detail-print-document {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    color: #111827;
+    font-size: 9pt;
+    line-height: 1.35;
+  }
+
+  .student-detail-print-document > header {
+    margin-bottom: 5mm;
+    border-bottom: 2px solid #455fab;
+    padding-bottom: 3mm;
+  }
+
+  .student-detail-print-document h1 { margin: 0; font-size: 19pt; }
+  .student-detail-print-document header p { margin: 1mm 0 0; color: #4b5563; }
+
+  .student-detail-print-section {
+    margin: 0 0 4mm;
+    break-before: auto;
+  }
+
+  .student-detail-print-section h2 {
+    margin: 0 0 2mm;
+    border-left: 3px solid #455fab;
+    padding-left: 2mm;
+    font-size: 12pt;
+    break-after: avoid;
+  }
+
+  .student-detail-print-info {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2mm 4mm;
+    margin: 0;
+  }
+
+  .student-detail-print-info dt { color: #6b7280; font-size: 8pt; }
+  .student-detail-print-info dd { margin: .5mm 0 0; font-weight: 600; }
+  .student-detail-print-memo { margin: 3mm 0 0; padding: 2mm; background: #f3f4f6; white-space: pre-wrap; }
+  .student-detail-print-empty { margin: 0; border: 1px dashed #d1d5db; padding: 3mm; color: #6b7280; text-align: center; }
+  .student-detail-print-document table { table-layout: auto; font-size: 8pt; }
+  .student-detail-print-document th { background: #f3f4f6 !important; font-weight: 700; }
+  .student-detail-print-document th,
+  .student-detail-print-document td { border: 1px solid #d1d5db; padding: 1.5mm; vertical-align: top; }
 
   .print-grid {
     display: grid;

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../utils/helpers';
 import { db } from '../firebase/client';
 import useAuth from '../auth/useAuth';
@@ -17,8 +17,10 @@ export default function Home({
     const [selectedTimelineClassId, setSelectedTimelineClassId] = useState('');
     const [selectedTimelineStudentId, setSelectedTimelineStudentId] = useState('');
     const [timelineCache, setTimelineCache] = useState({});
+    const timelineCacheRef = useRef({});
     const [staffTimelineLoading, setStaffTimelineLoading] = useState(false);
     const [staffTimelineError, setStaffTimelineError] = useState('');
+    const timelineSelectionTouched = useRef(false);
     const canAccessStaffTimeline = isStaffOrTeachingRole(userRole);
     const fallbackName = userProfile?.email || user?.email ? (userProfile?.email || user?.email).split('@')[0] : '';
     const displayName = userProfile?.displayName?.trim()
@@ -44,6 +46,7 @@ export default function Home({
     }, [canAccessStaffTimeline, timelineCache]);
 
     const toggleTimelineStudent = (student) => {
+        timelineSelectionTouched.current = true;
         const studentId = student.id;
         const nextId = selectedTimelineStudentId === studentId ? '' : studentId;
         setSelectedTimelineStudentId(nextId);
@@ -66,6 +69,35 @@ export default function Home({
             return ids.includes(String(selectedTimelineClassId));
         });
     }, [selectedTimelineClassId, students]);
+
+    useEffect(() => { timelineCacheRef.current = timelineCache; }, [timelineCache]);
+
+    useEffect(() => {
+        if (!selectedTimelineClassId || !timelineStudents.length || timelineSelectionTouched.current) return undefined;
+        let cancelled = false;
+
+        const automaticallySelectStudent = async () => {
+            const loaded = await Promise.all(timelineStudents.map(async (student) => {
+                if (Object.prototype.hasOwnProperty.call(timelineCacheRef.current, student.id)) {
+                    return { student, items: timelineCacheRef.current[student.id] };
+                }
+                try {
+                    const items = await fetchStaffTimelineByStudent(db, student, { limitCount: 20 });
+                    if (!cancelled) setTimelineCache((current) => ({ ...current, [student.id]: items }));
+                    return { student, items };
+                } catch (error) {
+                    console.error('[staffTimeline] automatic selection lookup failed', error);
+                    return { student, items: [] };
+                }
+            }));
+            if (cancelled || timelineSelectionTouched.current) return;
+            const target = loaded.find(({ items }) => items.length)?.student || timelineStudents[0];
+            if (target) setSelectedTimelineStudentId(target.id);
+        };
+
+        automaticallySelectStudent();
+        return () => { cancelled = true; };
+    }, [selectedTimelineClassId, timelineStudents]); // Cache changes must not restart automatic selection.
 
     const timelineActor = useMemo(() => ({
         uid: user?.uid || '',
@@ -117,6 +149,7 @@ export default function Home({
                         <select
                             value={selectedTimelineClassId}
                             onChange={(event) => {
+                                timelineSelectionTouched.current = false;
                                 setSelectedTimelineClassId(event.target.value);
                                 setSelectedTimelineStudentId('');
                             }}

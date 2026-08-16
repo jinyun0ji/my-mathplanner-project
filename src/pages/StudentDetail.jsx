@@ -16,6 +16,7 @@ import { db } from '../firebase/client';
 import useAuth from '../auth/useAuth';
 import { ROLE } from '../constants/roles';
 import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
+import StudentDetailPrint from '../components/StudentDetail/StudentDetailPrint';
 import {
     createStaffTimelineThread,
     fetchStaffTimelineByStudent,
@@ -207,9 +208,11 @@ const fetchByStudentKeys = async (collectionName, student, count = 300) => {
     ].filter(Boolean).map(String))];
     const fields = ['studentId', 'studentDocId', 'studentUid', 'authUid', 'uid']
         .flatMap((field) => studentKeys.map((value) => [field, value]));
-    const snapshots = await Promise.all(fields.map(([field, value]) => (
-        getDocs(query(collection(db, collectionName), where(field, '==', value), limit(count)))
-    )));
+    const snapshots = await Promise.all(fields.map(([field, value]) => {
+        const constraints = [where(field, '==', value)];
+        if (count != null) constraints.push(limit(count));
+        return getDocs(query(collection(db, collectionName), ...constraints));
+    }));
     return mergeById(snapshots.map((snapshot) => (
         snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
     )));
@@ -230,7 +233,7 @@ const fetchByIds = async (collectionName, ids) => {
     ));
 };
 
-const fetchStudentRecords = async (collectionName, student) => {
+const fetchStudentRecords = async (collectionName, student, count = 300) => {
     const keys = [...new Set([
         student?.id,
         student?.authUid,
@@ -239,7 +242,7 @@ const fetchStudentRecords = async (collectionName, student) => {
         student?.userUid,
     ].filter(Boolean).map(String))];
     const [queried, directSnapshots] = await Promise.all([
-        fetchByStudentKeys(collectionName, student),
+        fetchByStudentKeys(collectionName, student, count),
         Promise.all(keys.map((key) => getDoc(doc(db, collectionName, key)).catch(() => null))),
     ]);
     const direct = directSnapshots
@@ -260,15 +263,16 @@ const fetchStudentRecords = async (collectionName, student) => {
     return mergeById([queried, direct]);
 };
 
-const fetchByClassIds = async (collectionName, classIds) => {
+const fetchByClassIds = async (collectionName, classIds, count = 300) => {
     const uniqueIds = [...new Set(classIds.filter(Boolean).map(String))];
     const chunks = [];
     for (let index = 0; index < uniqueIds.length; index += 10) chunks.push(uniqueIds.slice(index, index + 10));
     if (!chunks.length) return [];
-    const snapshots = await Promise.all(chunks.flatMap((idsChunk) => [
-        getDocs(query(collection(db, collectionName), where('classId', 'in', idsChunk), limit(300))),
-        getDocs(query(collection(db, collectionName), where('classDocId', 'in', idsChunk), limit(300))),
-    ]));
+    const snapshots = await Promise.all(chunks.flatMap((idsChunk) => ['classId', 'classDocId'].map((field) => {
+        const constraints = [where(field, 'in', idsChunk)];
+        if (count != null) constraints.push(limit(count));
+        return getDocs(query(collection(db, collectionName), ...constraints));
+    })));
     return mergeById(snapshots.map((snapshot) => (
         snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
     )));
@@ -367,6 +371,9 @@ export default function StudentDetail() {
     const [timelineDraft, setTimelineDraft] = useState('');
     const [timelineSaving, setTimelineSaving] = useState(false);
     const [timelineError, setTimelineError] = useState('');
+    const [printData, setPrintData] = useState(null);
+    const [printPreparing, setPrintPreparing] = useState(false);
+    const [printError, setPrintError] = useState('');
 
     const canUseTimeline = [ROLE.ADMIN, ROLE.STAFF, ROLE.TEACHER].includes(role);
 
@@ -678,6 +685,93 @@ export default function StudentDetail() {
         ['출생년도', student.birthYear || '-'],
     ];
 
+    const handlePrint = async () => {
+        if (printPreparing) return;
+        setPrintPreparing(true);
+        setPrintError('');
+        try {
+            const [allAttendances, allClinics, allGrades, allHomework, allPayments, allMaterials, allTimeline] = await Promise.all([
+                fetchByStudentKeys(COLLECTIONS.attendance, student, null),
+                fetchByStudentKeys(COLLECTIONS.clinic, student, null),
+                fetchStudentRecords(COLLECTIONS.grades, student, null),
+                fetchStudentRecords(COLLECTIONS.homeworkResults, student, null),
+                fetchByStudentKeys(COLLECTIONS.payments, student, null).catch(() => []),
+                fetchByStudentKeys(COLLECTIONS.materials, student, null).catch(() => []),
+                canUseTimeline ? fetchStaffTimelineByStudent(db, student, { limitCount: null }) : Promise.resolve([]),
+            ]);
+            const matchedAttendances = allAttendances.filter((item) => isSameStudentByAnyKey(item, student));
+            const matchedClinics = allClinics.filter((item) => isSameStudentByAnyKey(item, student));
+            const matchedGrades = allGrades.filter((item) => isSameStudentByAnyKey(item, student));
+            const matchedHomework = allHomework.filter((item) => isSameStudentByAnyKey(item, student));
+            const baseClassIds = getStudentClassIds(student);
+            const referencedTestIds = matchedGrades.map(resolveGradeTestId).filter(Boolean);
+            const [referencedTests, classTests] = await Promise.all([
+                fetchByIds(COLLECTIONS.tests, referencedTestIds),
+                fetchByClassIds(COLLECTIONS.tests, baseClassIds, null),
+            ]);
+            const printTests = mergeById([referencedTests, classTests]);
+            const printClassIds = [...new Set([
+                ...baseClassIds,
+                ...matchedAttendances.map(getClassId),
+                ...matchedClinics.map(getClassId),
+                ...printTests.map(getClassId),
+            ].filter(Boolean))];
+            const assignmentIds = matchedHomework.map(resolveHomeworkAssignmentId).filter(Boolean);
+            const statsIds = printTests.filter((test) => test.id && getClassId(test)).map((test) => `${getClassId(test)}_${test.id}`);
+            const [printClasses, assignmentsByClass, assignmentsById, printStats] = await Promise.all([
+                fetchByIds(COLLECTIONS.classes, printClassIds),
+                fetchByClassIds(COLLECTIONS.homeworkAssignments, printClassIds, null),
+                fetchByIds(COLLECTIONS.homeworkAssignments, assignmentIds),
+                fetchByIds('classTestStats', statsIds),
+            ]);
+            const printClassMap = new Map(printClasses.map((item) => [String(item.id), item]));
+            const printTestMap = new Map(printTests.map((item) => [String(item.id), item]));
+            const printAssignmentMap = new Map(mergeById([assignmentsByClass, assignmentsById]).map((item) => [String(item.id), item]));
+            const printStatsMap = Object.fromEntries(printStats.map((item) => [item.id, item]));
+            const resolvedGrades = matchedGrades.flatMap((grade) => {
+                const test = printTestMap.get(String(resolveGradeTestId(grade)));
+                if (!test) return [];
+                const classDoc = printClassMap.get(getClassId(test));
+                const stats = resolveClassTestStats(test, printStatsMap);
+                return [{ ...grade, test, testDate: firstValue(test, ['testDate', 'date', 'createdAt']), ...resolveGradeDisplay({ grade, test, classDoc }), classAverage: stats?.average ?? test.average ?? null, highestScore: stats?.maxScore ?? test.maxScore ?? null }];
+            });
+            const resolvedHomework = matchedHomework.flatMap((result) => {
+                const assignment = printAssignmentMap.get(String(resolveHomeworkAssignmentId(result)));
+                if (!assignment) return [];
+                return [{ ...assignment, ...result, assignmentTitle: resolveHomeworkAssignmentTitle(assignment), questionSummary: resolveHomeworkQuestionSummary(assignment, result) }];
+            });
+            const printClassName = (record) => record?.className
+                || firstValue(printClassMap.get(getClassId(record)), ['name', 'className', 'title'])
+                || firstValue(record, ['className'], '(클래스 미상)');
+            setPrintData({
+                student,
+                infoRows,
+                classes: sortClassesWithClosedLast(printClasses),
+                attendances: sortNewest(matchedAttendances, ['date', 'lessonDate', 'createdAt']),
+                clinics: sortNewest(matchedClinics, ['date', 'clinicDate', 'createdAt']),
+                tests: sortNewest(printTests, ['testDate', 'date', 'createdAt']),
+                grades: sortNewest(resolvedGrades, ['testDate', 'date', 'createdAt']),
+                homework: sortNewest(resolvedHomework, ['assignedDate', 'date', 'createdAt']),
+                timeline: allTimeline,
+                paymentMaterials: [
+                    ...allPayments.map((item) => ({ ...item, recordType: '결제' })),
+                    ...allMaterials.map((item) => ({ ...item, recordType: '교재' })),
+                ],
+                className: printClassName,
+                formatScore,
+            });
+            await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+            window.print();
+            setPrintData(null);
+        } catch (printLoadError) {
+            console.error('[StudentDetail] print data load failed', printLoadError);
+            setPrintError('인쇄용 전체 데이터를 준비하지 못했습니다. 다시 시도해주세요.');
+            setPrintData(null);
+        } finally {
+            setPrintPreparing(false);
+        }
+    };
+
     const renderTab = () => {
         if (activeTab === 'profile') {
             return (
@@ -839,10 +933,13 @@ export default function StudentDetail() {
     };
 
     return (
-        <div className="student-detail-print mx-auto max-w-[1500px] space-y-4 pb-8">
+        <div className="student-detail-container mx-auto max-w-[1500px] space-y-4 pb-8">
             <div className="no-print flex items-center justify-between">
                 <button type="button" onClick={() => navigate('/students')} className="text-xs font-semibold text-gray-500 hover:text-[#455fab]">← 학생 목록</button>
-                <button type="button" onClick={() => window.print()} className="rounded-lg bg-[#455fab] px-4 py-2 text-xs font-bold text-white">인쇄</button>
+                <div className="flex items-center gap-3">
+                    {printError && <span className="text-xs font-medium text-rose-600">{printError}</span>}
+                    <button type="button" disabled={printPreparing} onClick={handlePrint} className="rounded-lg bg-[#455fab] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{printPreparing ? '인쇄 준비 중...' : '인쇄'}</button>
+                </div>
             </div>
             <section className="rounded-2xl border border-gray-200 bg-white p-5">
                 <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-100 pb-5">
@@ -886,6 +983,7 @@ export default function StudentDetail() {
                 </div>
             </nav>
             {renderTab()}
+            <StudentDetailPrint data={printData} />
         </div>
     );
 }
