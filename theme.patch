@@ -1,88 +1,203 @@
+diff --git a/src/domain/studentDetail/studentDetailScreen.logic.js b/src/domain/studentDetail/studentDetailScreen.logic.js
+index 3e8ee96cdfe6828f789dad07939835cc8e81474b..58d4717fde96e3a1d1b3c7e85d95fcff0d3f9e13 100644
+--- a/src/domain/studentDetail/studentDetailScreen.logic.js
++++ b/src/domain/studentDetail/studentDetailScreen.logic.js
+@@ -79,49 +79,138 @@ export const buildStudentHomeworkRows = ({ homeworkResults, assignmentMap, stude
+             classId: assignment.classId || assignment.classDocId || result.classId || result.classDocId || '',
+             classDocId: assignment.classDocId || assignment.classId || result.classDocId || result.classId || '',
+             status: completionLabel,
+             completed: completionLabel === '완료',
+             questionSummary: resolveHomeworkQuestionSummary(assignment, result),
+             results: normalizeHomeworkResultMapForDisplay(result, questionNumbers, { assignmentId, studentId }),
+         };
+         logger?.({
+             resultId: result.id,
+             assignmentId,
+             assignmentFound: true,
+             assignment: {
+                 id: assignment.id,
+                 title: assignment.title,
+                 name: assignment.name,
+                 assignmentTitle: assignment.assignmentTitle,
+                 classId: assignment.classId,
+                 classDocId: assignment.classDocId,
+             },
+             finalRow: { assignmentTitle: row.assignmentTitle, classId: row.classId },
+         });
+         return [row];
+     })
+ );
+ 
++const clinicValue = (record, keys) => {
++    for (const key of keys) {
++        const value = record?.[key];
++        if (value !== undefined && value !== null && value !== '') return value;
++    }
++    return '';
++};
++
++const clinicDate = (value) => {
++    if (!value) return null;
++    if (typeof value?.toDate === 'function') return value.toDate();
++    if (value instanceof Date) return value;
++    const parsed = new Date(value);
++    return Number.isNaN(parsed.getTime()) ? null : parsed;
++};
++
++const CANCELLED_CLINIC_STATUSES = new Set([
++    'cancelled', 'canceled', 'cancel', '취소', '예약취소', '예약 취소',
++]);
++const COMPLETED_CLINIC_STATUSES = new Set([
++    'attended', 'completed', 'complete', 'done', 'present', '참석', '완료', '참석 완료',
++    // ClinicManagement treats no-show as a finalized attendance outcome and exposes its report.
++    'no-show', 'no_show', 'noshow', 'missed', 'absent', '미참석',
++]);
++
++export const resolveStudentClinicDate = (record) => clinicValue(record, [
++    'effectiveDate', 'date', 'clinicDate', 'reservationDate', 'scheduledAt', 'startAt', 'createdAt',
++]);
++
++export const normalizeStudentClinicRow = (record, sourceType) => {
++    const effectiveDate = resolveStudentClinicDate(record);
++    const effectiveStatus = String(clinicValue(record, ['status', 'clinicStatus', 'attendanceStatus', 'result']) || '').trim();
++    return {
++        ...record,
++        id: String(record?.id || ''),
++        studentId: record?.studentId || record?.studentDocId || record?.studentUid || '',
++        sourceType,
++        effectiveDate,
++        effectiveStatus,
++        effectiveTime: clinicValue(record, ['plannedTime', 'timeSlot', 'time', 'checkIn', 'startAt']),
++        effectiveStaffName: clinicValue(record, ['tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'updatedByName', 'createdByName']),
++        effectiveComment: clinicValue(record, ['clinicComment', 'comment', 'content', 'note', 'memo']),
++    };
++};
++
++const linkedReservationIds = (record) => [
++    record?.reservationId,
++    record?.sourceReservationId,
++    record?.clinicReservationId,
++    record?.sourceCollection === 'clinicReservations' ? record?.sourceDocId : '',
++].filter(Boolean).map(String);
++
++export const buildStudentClinicRows = ({ clinicLogs = [], clinicReservations = [], now = new Date() }) => {
++    const endOfToday = new Date(now);
++    endOfToday.setHours(23, 59, 59, 999);
++    const reservationsById = new Map(clinicReservations.map((item) => [String(item?.id || ''), item]));
++    const linkedIds = new Set(clinicLogs.flatMap(linkedReservationIds));
++
++    const logs = clinicLogs.map((item) => normalizeStudentClinicRow(item, 'clinicLog'));
++    const reservations = clinicReservations.flatMap((item) => {
++        const id = String(item?.id || '');
++        const status = String(clinicValue(item, ['status', 'clinicStatus', 'attendanceStatus', 'result']) || '').trim().toLowerCase();
++        if (CANCELLED_CLINIC_STATUSES.has(status) || linkedIds.has(id)) return [];
++        // A reservation is history after its scheduled day. Explicit attendance outcomes remain
++        // history even if malformed data carries a future date; future pending bookings do not.
++        const date = clinicDate(resolveStudentClinicDate(item));
++        if (!COMPLETED_CLINIC_STATUSES.has(status) && (!date || date > endOfToday)) return [];
++        return [normalizeStudentClinicRow(item, 'clinicReservation')];
++    });
++
++    const seen = new Set();
++    return [...logs, ...reservations]
++        .filter((row) => {
++            // Same document id is only a duplicate across the two source collections. Within a
++            // collection ids are unique, and no date/time heuristic is used to merge real visits.
++            const key = `${row.sourceType}:${row.id}`;
++            const crossSourceKey = `document:${row.id}`;
++            if (seen.has(key) || (reservationsById.has(row.id) && row.sourceType === 'clinicReservation' && seen.has(crossSourceKey))) return false;
++            seen.add(key);
++            seen.add(crossSourceKey);
++            return true;
++        })
++        .sort((a, b) => {
++            const timeDifference = (clinicDate(b.effectiveDate)?.getTime() || 0) - (clinicDate(a.effectiveDate)?.getTime() || 0);
++            if (timeDifference) return timeDifference;
++            return String(b.effectiveTime || '').localeCompare(String(a.effectiveTime || ''));
++        });
++};
++
+ export const fetchStudentPageCore = async ({ pairs, cursors = {}, pageSize, fetchPair, mergeRows, sortRows }) => {
+     const bufferedRows = Array.isArray(cursors.__buffer) ? cursors.__buffer : [];
+     if (bufferedRows.length >= pageSize) {
+         return {
+             rows: bufferedRows.slice(0, pageSize),
+             cursors: { ...cursors, __buffer: bufferedRows.slice(pageSize) },
+             hasMore: true,
+         };
+     }
+     const results = await Promise.all(pairs.map(async ([field, value]) => {
+         const cursorKey = `${field}:${value}`;
+         if (cursors[cursorKey] === null) return { cursorKey, docs: [], cursor: null, hasMore: false };
+         return { cursorKey, ...await fetchPair({ field, value, cursor: cursors[cursorKey] }) };
+     }));
+     const nextCursors = { ...cursors };
+     results.forEach((result) => { nextCursors[result.cursorKey] = result.hasMore ? result.cursor : null; });
+     const mergedRows = sortRows(mergeRows([bufferedRows, ...results.map((result) => result.docs)]));
+     nextCursors.__buffer = mergedRows.slice(pageSize);
+     return {
+         rows: mergedRows.slice(0, pageSize),
+         cursors: nextCursors,
+         hasMore: nextCursors.__buffer.length > 0 || results.some((result) => result.hasMore),
+     };
+ };
 diff --git a/src/domain/studentDetail/studentDetailScreen.logic.test.js b/src/domain/studentDetail/studentDetailScreen.logic.test.js
-index 6497d9ca307382620d713d50166e30c6bebb81ba..cfaf003205ac974664107d72f5bcd4d0a0057ed9 100644
+index cfaf003205ac974664107d72f5bcd4d0a0057ed9..50b5ef3b3205392912df75b14b9f944991d20620 100644
 --- a/src/domain/studentDetail/studentDetailScreen.logic.test.js
 +++ b/src/domain/studentDetail/studentDetailScreen.logic.test.js
-@@ -58,56 +58,79 @@ describe('StudentDetail normal-screen regression paths', () => {
-     test('uses the real homework assignment title and class relationship', () => {
-         const assignment = { id: 'assignment-1', title: '일차방정식', classId: 'class-1', questionNumbers: [1] };
-         const rows = buildStudentHomeworkRows({
-             homeworkResults: [{ id: 'result-1', homeworkAssignmentId: 'assignment-1', results: { 1: '맞음' } }],
-             assignmentMap: new Map([['assignment-1', assignment]]),
-             studentId: 'student-1',
+@@ -1,33 +1,34 @@
+ import { isClosedClass } from '../../utils/classStatus';
+ import React from 'react';
+ import { render, screen, within } from '@testing-library/react';
+ import { resolveClassTestStats } from '../grade/classTestStats.service';
+-import { DataTable } from '../../pages/StudentDetail';
++import { CLINIC_FIELDS, DataTable } from '../../pages/StudentDetail';
+ import {
+     buildStudentGradeRows,
+     buildStudentHomeworkRows,
++    buildStudentClinicRows,
+     fetchStudentPageCore,
+ } from './studentDetailScreen.logic';
+ 
+ describe('StudentDetail normal-screen regression paths', () => {
+     test('joins a grade to its real test and class', () => {
+         const rows = buildStudentGradeRows({
+             grades: [{ id: 'grade-1', testId: 'test-1', score: 91 }],
+             testMap: new Map([['test-1', { id: 'test-1', classId: 'class-1', title: '8월 시험' }]]),
+             classMap: new Map([['class-1', { id: 'class-1', name: '중2 수학' }]]),
+             classTestStats: {},
+             getClassId: (record) => String(record.classId || ''),
+             isClosedClass,
+             resolveClassTestStats,
          });
-         const classMap = new Map([['class-1', { id: 'class-1', name: '중2 수학' }]]);
  
          expect(rows).toHaveLength(1);
-         expect(rows[0].assignmentTitle).toBe('일차방정식');
-         expect(classMap.get(rows[0].classId).name).toBe('중2 수학');
+         expect(rows[0].classDoc.name).toBe('중2 수학');
      });
  
-     test('assignment metadata wins over empty or legacy result metadata', () => {
-         const rows = buildStudentHomeworkRows({
-             homeworkResults: [{ id: 'result-1', assignmentId: 'assignment-1', title: '', classId: '', classDocId: 'legacy-class', results: { 1: '맞음' } }],
-             assignmentMap: new Map([['assignment-1', { id: 'assignment-1', title: '실제 과제명', classId: 'real-class', questionNumbers: [1] }]]),
-             studentId: 'student-1',
-         });
- 
-         expect(rows[0]).toMatchObject({ id: 'result-1', assignmentTitle: '실제 과제명', classId: 'real-class' });
-         expect(rows[0].results).toEqual({ 1: '맞음' });
-     });
- 
--    test('the screen page/load-more path renders 9 clinics as 4, 8, then 9', async () => {
--        const records = Array.from({ length: 9 }, (_, index) => ({ id: `clinic-${index + 1}`, date: `2026-08-${String(9 - index).padStart(2, '0')}` }));
--        const fetchPair = jest.fn(({ cursor }) => {
--            const start = cursor ?? 0;
--            const docs = records.slice(start, start + 4);
--            return Promise.resolve({ docs, cursor: start + docs.length, hasMore: docs.length === 4 });
--        });
-+    test('pages mixed current and legacy clinic schemas without requiring date', async () => {
-+        const recordsByIdentity = {
-+            'studentId:student-doc': [
-+                { id: 'current-1', studentId: 'student-doc', date: '2026-08-09' },
-+                { id: 'current-2', studentId: 'student-doc', date: '2026-08-08' },
-+                { id: 'legacy-clinic-date', studentId: 'student-doc', clinicDate: '2026-08-07' },
-+            ],
-+            'authUid:student-auth': [
-+                { id: 'legacy-created-at', authUid: 'student-auth', createdAt: '2026-08-06' },
-+                { id: 'legacy-no-date', authUid: 'student-auth' },
-+            ],
-+            'userUid:student-auth': [
-+                { id: 'legacy-user-uid', userUid: 'student-auth', clinicDate: '2026-08-05' },
-+                { id: 'current-1', userUid: 'student-auth', date: '2026-08-09' },
-+            ],
-+        };
-+        const fetchPair = jest.fn(({ field, value }) => Promise.resolve({
-+            docs: recordsByIdentity[`${field}:${value}`] || [], cursor: null, hasMore: false,
-+        }));
-         const mergeRows = (groups) => [...new Map(groups.flat().map((row) => [row.id, row])).values()];
--        const sortRows = (rows) => [...rows].sort((a, b) => b.date.localeCompare(a.date));
-+        const effectiveDate = (row) => row.date || row.clinicDate || row.createdAt || '';
-+        const sortRows = (rows) => [...rows].sort((a, b) => effectiveDate(b).localeCompare(effectiveDate(a)));
-         let cursors = {};
-         let rendered = [];
- 
--        for (const expectedCount of [4, 8, 9]) {
-+        for (const expectedCount of [4, 6]) {
-             const page = await fetchStudentPageCore({
--                pairs: [['studentId', 'student-1']], cursors, pageSize: 4, fetchPair, mergeRows, sortRows,
-+                pairs: [
-+                    ['studentId', 'student-doc'],
-+                    ['authUid', 'student-auth'],
-+                    ['userUid', 'student-auth'],
-+                ],
-+                cursors, pageSize: 4, fetchPair, mergeRows, sortRows,
+     test('keeps a historical grade whose class is closed', () => {
+         const rows = buildStudentGradeRows({
+             grades: [{ id: 'grade-closed', testId: 'test-closed', score: 88 }],
+             testMap: new Map([['test-closed', { id: 'test-closed', classId: 'class-closed', title: '기말고사' }]]),
+             classMap: new Map([['class-closed', { id: 'class-closed', name: '종강반', status: 'closed', active: false }]]),
+             classTestStats: {},
+@@ -111,26 +112,82 @@ describe('StudentDetail normal-screen regression paths', () => {
+                     ['studentId', 'student-doc'],
+                     ['authUid', 'student-auth'],
+                     ['userUid', 'student-auth'],
+                 ],
+                 cursors, pageSize: 4, fetchPair, mergeRows, sortRows,
              });
              rendered = mergeRows([rendered, page.rows]);
              cursors = page.cursors;
              expect(rendered).toHaveLength(expectedCount);
--            if (expectedCount === 9) expect(page.hasMore).toBe(false);
-+            if (expectedCount === 6) expect(page.hasMore).toBe(false);
+             if (expectedCount === 6) expect(page.hasMore).toBe(false);
          }
-+
-+        expect(fetchPair).toHaveBeenCalledTimes(3);
-+        expect(rendered.map((row) => row.id)).toEqual(expect.arrayContaining([
-+            'current-1', 'current-2', 'legacy-clinic-date', 'legacy-created-at', 'legacy-no-date', 'legacy-user-uid',
-+        ]));
+ 
+         expect(fetchPair).toHaveBeenCalledTimes(3);
+         expect(rendered.map((row) => row.id)).toEqual(expect.arrayContaining([
+             'current-1', 'current-2', 'legacy-clinic-date', 'legacy-created-at', 'legacy-no-date', 'legacy-user-uid',
+         ]));
      });
  
      test('the clinic table renders every row already present in screen state', () => {
@@ -92,25 +207,128 @@ index 6497d9ca307382620d713d50166e30c6bebb81ba..cfaf003205ac974664107d72f5bcd4d0
          expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(9);
          rows.forEach((row) => expect(screen.getByText(row.label)).toBeInTheDocument());
      });
++
++    test('merges walk-in logs and historical reservations while excluding future and cancelled bookings', () => {
++        const clinicLogs = Array.from({ length: 4 }, (_, index) => ({
++            id: `walk-in-${index + 1}`,
++            studentId: 'student-doc',
++            clinicDate: `2026-08-0${index + 1}`,
++            status: 'attended',
++        }));
++        const clinicReservations = [
++            { id: 'past-pending', studentDocId: 'student-doc', date: '2026-08-10', status: 'pending' },
++            { id: 'past-attended', authUid: 'student-auth', reservationDate: '2026-08-11', status: 'attended' },
++            { id: 'past-no-show', studentUid: 'student-doc', scheduledAt: '2026-08-12T17:00:00Z', status: 'no-show' },
++            { id: 'future', studentDocId: 'student-doc', date: '2026-08-20', status: 'pending' },
++            { id: 'cancelled', studentDocId: 'student-doc', date: '2026-08-09', status: 'cancelled' },
++        ];
++
++        const rows = buildStudentClinicRows({ clinicLogs, clinicReservations, now: new Date('2026-08-16T12:00:00Z') });
++
++        expect(rows).toHaveLength(7);
++        expect(rows.map((row) => row.id)).toEqual([
++            'past-no-show', 'past-attended', 'past-pending',
++            'walk-in-4', 'walk-in-3', 'walk-in-2', 'walk-in-1',
++        ]);
++        expect(rows.map((row) => row.id)).not.toEqual(expect.arrayContaining(['future', 'cancelled']));
++        expect(rows.find((row) => row.id === 'past-attended')).toMatchObject({
++            studentId: 'student-auth', sourceType: 'clinicReservation', effectiveDate: '2026-08-11',
++        });
++    });
++
++    test('deduplicates only explicit reservation links or cross-collection document ids', () => {
++        const rows = buildStudentClinicRows({
++            clinicLogs: [
++                { id: 'report-1', studentId: 'student-doc', date: '2026-08-10', reservationId: 'reservation-1' },
++                { id: 'same-id', studentId: 'student-doc', date: '2026-08-09' },
++                { id: 'separate-visit', studentId: 'student-doc', date: '2026-08-10' },
++            ],
++            clinicReservations: [
++                { id: 'reservation-1', studentDocId: 'student-doc', date: '2026-08-10', status: 'attended' },
++                { id: 'same-id', studentDocId: 'student-doc', date: '2026-08-09', status: 'attended' },
++            ],
++            now: new Date('2026-08-16T12:00:00Z'),
++        });
++
++        expect(rows.map((row) => row.id)).toEqual(['report-1', 'separate-visit', 'same-id']);
++        expect(rows.filter((row) => row.id === 'same-id')).toHaveLength(1);
++    });
++
++    test('queries clinic reservations through document and auth identity aliases', () => {
++        expect(CLINIC_FIELDS.map(([field]) => field)).toEqual(expect.arrayContaining([
++            'studentId', 'studentDocId', 'studentUid', 'authUid', 'uid', 'userUid',
++        ]));
++        const studentDocAliases = CLINIC_FIELDS.find(([field]) => field === 'studentDocId')[1];
++        const authAliases = CLINIC_FIELDS.find(([field]) => field === 'authUid')[1];
++        expect(studentDocAliases).toEqual(expect.arrayContaining(['id', 'authUid']));
++        expect(authAliases).toEqual(expect.arrayContaining(['id', 'authUid', 'userUid']));
++    });
  });
 diff --git a/src/pages/StudentDetail.jsx b/src/pages/StudentDetail.jsx
-index a74c28d6eb4b9f99a36efbabd94bcb3ca493546a..d2fab341cf3ffb5a91f61960b4cbe28c52f5c517 100644
+index d2fab341cf3ffb5a91f61960b4cbe28c52f5c517..69915b7153b98800fc7f1e832213a34ee603f281 100644
 --- a/src/pages/StudentDetail.jsx
 +++ b/src/pages/StudentDetail.jsx
-@@ -154,61 +154,93 @@ export const fetchStudentPage = async (collectionName, student, fields, cursors
-             const snapshot = await getDocs(query(collection(db, collectionName), ...constraints));
-             const result = {
-                 docs: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
-                 cursor: snapshot.docs.at(-1) || null,
-                 hasMore: snapshot.size === PAGE_SIZE,
-             };
-             if (process.env.NODE_ENV !== 'production' && collectionName === COLLECTIONS.clinic) {
-                 console.log('[studentDetail][clinic:query]', {
-                     field,
-                     value,
-                     previousCursorId: cursor?.id || null,
-                     returnedIds: result.docs.map((item) => item.id),
-                     nextCursorId: result.cursor?.id || null,
+@@ -10,57 +10,58 @@ import {
+     orderBy,
+     query,
+     startAfter,
+     where,
+ } from 'firebase/firestore';
+ import { db } from '../firebase/client';
+ import useAuth from '../auth/useAuth';
+ import { ROLE } from '../constants/roles';
+ import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
+ import StudentDetailPrint from '../components/StudentDetail/StudentDetailPrint';
+ import {
+     createStaffTimelineThread,
+     fetchStaffTimelineByStudent,
+ } from '../domain/staffTimeline/staffTimeline.service';
+ import { getStudentGradeLabel } from '../utils/gradeUtils';
+ import { isClosedClass, sortClassesWithClosedLast } from '../utils/classStatus';
+ import { isSameStudentByAnyKey } from '../utils/studentKey';
+ import {
+     resolveHomeworkAssignmentId,
+     resolveHomeworkAssignmentTitle,
+     resolveHomeworkQuestionSummary,
+ } from '../domain/homework/homework.service';
+ import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
+ import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
+ import { formatScoreStat } from '../utils/scoreDisplay';
+-import { buildStudentGradeRows, buildStudentHomeworkRows, fetchStudentPageCore } from '../domain/studentDetail/studentDetailScreen.logic';
++import { buildStudentClinicRows, buildStudentGradeRows, buildStudentHomeworkRows, fetchStudentPageCore } from '../domain/studentDetail/studentDetailScreen.logic';
+ 
+ const COLLECTIONS = {
+     users: 'users',
+     classes: 'classes',
+     attendance: 'attendanceLogs',
+     clinic: 'clinicLogs',
++    clinicReservations: 'clinicReservations',
+     grades: 'grades',
+     tests: 'tests',
+     homeworkResults: 'homeworkResults',
+     homeworkAssignments: 'homeworkAssignments',
+     payments: 'payments',
+     materials: 'materialPurchases',
+ };
+ 
+ const TABS = [
+     ['profile', '기본정보'],
+     ['classes', '수강반'],
+     ['attendance', '출결'],
+     ['grades', '성적'],
+     ['homework', '과제'],
+     ['clinic', '클리닉'],
+     ['timeline', '교직원 타임라인'],
+     ['payments', '결제/교재'],
+ ];
+ 
+ const toDate = (value) => {
+     if (!value) return null;
+     if (typeof value?.toDate === 'function') return value.toDate();
+     if (value instanceof Date) return value;
+     const parsed = new Date(value);
+     return Number.isNaN(parsed.getTime()) ? null : parsed;
+@@ -167,63 +168,75 @@ export const fetchStudentPage = async (collectionName, student, fields, cursors
                      hasMore: result.hasMore,
                  });
              }
@@ -123,55 +341,68 @@ index a74c28d6eb4b9f99a36efbabd94bcb3ca493546a..d2fab341cf3ffb5a91f61960b4cbe28c
      });
  };
  
-+export const CLINIC_FIELDS = [
-+    ['studentId', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
-+    ['studentDocId', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
-+    ['studentUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
-+    ['authUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
-+    ['uid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
-+    ['userUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
-+];
-+
-+// clinicLogs에는 date가 생기기 전의 문서도 남아 있다. Firestore의 orderBy는 해당
-+// 필드가 없는 문서를 제외하므로, 일반 학생 상세의 클리닉 목록만 식별자별 전체를
-+// 한 번 읽고 effective date를 클라이언트에서 정렬한 뒤 화면 단위로 나눈다.
-+export const fetchStudentClinicPage = async (student, cursors = {}) => {
-+    const pairs = studentQueryPairs(student, CLINIC_FIELDS);
-+    return fetchStudentPageCore({
-+        pairs, cursors, pageSize: PAGE_SIZE, mergeRows: mergeById,
-+        sortRows: (rows) => sortNewest(rows, ['date', 'clinicDate', 'createdAt']),
-+        fetchPair: async ({ field, value }) => {
-+            const snapshot = await getDocs(query(
-+                collection(db, COLLECTIONS.clinic),
-+                where(field, '==', value),
-+            ));
-+            const docs = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-+            if (process.env.NODE_ENV !== 'production') {
-+                console.log('[studentDetail][clinic:query]', {
-+                    field,
-+                    value,
-+                    previousCursorId: null,
-+                    returnedIds: docs.map((item) => item.id),
-+                    nextCursorId: null,
-+                    hasMore: false,
-+                });
-+            }
-+            return { docs, cursor: null, hasMore: false };
+ export const CLINIC_FIELDS = [
+     ['studentId', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+     ['studentDocId', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+     ['studentUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+     ['authUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+     ['uid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+     ['userUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+ ];
+ 
+ // clinicLogs에는 date가 생기기 전의 문서도 남아 있다. Firestore의 orderBy는 해당
+ // 필드가 없는 문서를 제외하므로, 일반 학생 상세의 클리닉 목록만 식별자별 전체를
+ // 한 번 읽고 effective date를 클라이언트에서 정렬한 뒤 화면 단위로 나눈다.
+ export const fetchStudentClinicPage = async (student, cursors = {}) => {
+-    const pairs = studentQueryPairs(student, CLINIC_FIELDS);
++    const identityPairs = studentQueryPairs(student, CLINIC_FIELDS);
++    const pairs = ['clinicLogs', 'clinicReservations'].flatMap((source) => (
++        identityPairs.map(([field, value]) => [`${source}:${field}`, value])
++    ));
+     return fetchStudentPageCore({
+-        pairs, cursors, pageSize: PAGE_SIZE, mergeRows: mergeById,
+-        sortRows: (rows) => sortNewest(rows, ['date', 'clinicDate', 'createdAt']),
+-        fetchPair: async ({ field, value }) => {
++        pairs, cursors, pageSize: PAGE_SIZE,
++        mergeRows: (groups) => {
++            const rows = groups.flat();
++            return buildStudentClinicRows({
++                clinicLogs: mergeById([rows.filter((row) => row.sourceType === 'clinicLog')]),
++                clinicReservations: mergeById([rows.filter((row) => row.sourceType === 'clinicReservation')]),
++            });
 +        },
-+    });
-+};
-+
++        sortRows: (rows) => rows,
++        fetchPair: async ({ field: sourceField, value }) => {
++            const [source, field] = sourceField.split(':');
+             const snapshot = await getDocs(query(
+-                collection(db, COLLECTIONS.clinic),
++                collection(db, source),
+                 where(field, '==', value),
+             ));
+-            const docs = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
++            const sourceType = source === COLLECTIONS.clinicReservations ? 'clinicReservation' : 'clinicLog';
++            const docs = snapshot.docs.map((item) => ({ id: item.id, ...item.data(), sourceType }));
+             if (process.env.NODE_ENV !== 'production') {
+                 console.log('[studentDetail][clinic:query]', {
+-                    field,
++                    field: sourceField,
+                     value,
+                     previousCursorId: null,
+                     returnedIds: docs.map((item) => item.id),
+                     nextCursorId: null,
+                     hasMore: false,
+                 });
+             }
+             return { docs, cursor: null, hasMore: false };
+         },
+     });
+ };
+ 
  const ATTENDANCE_FIELDS = [
      ['studentId', ['id']],
      ['studentUid', ['studentUid', 'uid', 'id']],
      ['authUid', ['authUid', 'uid']],
  ];
--const CLINIC_FIELDS = [
--    ['studentId', ['id']],
--    ['studentDocId', ['id']],
--    ['studentUid', ['uid', 'id']],
--    ['authUid', ['authUid', 'uid']],
--];
  
  const fetchByStudentKeys = async (collectionName, student, count = 300) => {
      const studentKeys = [...new Set([
@@ -180,86 +411,60 @@ index a74c28d6eb4b9f99a36efbabd94bcb3ca493546a..d2fab341cf3ffb5a91f61960b4cbe28c
          student.authUid,
          student.studentUid,
          student.userUid,
-     ].filter(Boolean).map(String))];
-     const fields = ['studentId', 'studentDocId', 'studentUid', 'authUid', 'uid']
-         .flatMap((field) => studentKeys.map((value) => [field, value]));
-     const snapshots = await Promise.all(fields.map(([field, value]) => {
-         const constraints = [where(field, '==', value)];
-         if (count != null) constraints.push(limit(count));
-         return getDocs(query(collection(db, collectionName), ...constraints));
-     }));
-     return mergeById(snapshots.map((snapshot) => (
-         snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
-     )));
- };
- 
- const fetchByIds = async (collectionName, ids) => {
-     const uniqueIds = [...new Set(ids.filter(Boolean).map(String))];
-     const chunks = [];
-     for (let index = 0; index < uniqueIds.length; index += 10) {
-@@ -379,51 +411,51 @@ export default function StudentDetail() {
-         } catch (loadError) {
-             console.error('[StudentDetail] staffTimeline load failed', loadError);
-             setTimelineError('교직원 타임라인을 불러오지 못했습니다.');
-         } finally {
-             setTimelineLoading(false);
-         }
-     }, [student, canUseTimeline]);
- 
+@@ -535,51 +548,51 @@ export default function StudentDetail() {
      useEffect(() => {
-         let mounted = true;
-         const load = async () => {
-             setLoading(true);
-             setError('');
-             try {
-                 const studentSnapshot = await getDoc(doc(db, COLLECTIONS.users, studentId));
-                 if (!studentSnapshot.exists()) throw new Error('학생 정보를 찾을 수 없습니다.');
-                 const loadedStudent = { id: studentSnapshot.id, ...studentSnapshot.data() };
-                 if (loadedStudent.role && loadedStudent.role !== ROLE.STUDENT && loadedStudent.role !== 'student') {
-                     throw new Error('학생 역할의 문서가 아닙니다.');
-                 }
+         if (activeTab === 'timeline') loadTimeline();
+     }, [activeTab, loadTimeline]);
  
-                 const [attendancePage, gradeRows, homeworkRows, clinicPage, paymentRows, materialRows] = await Promise.all([
-                     fetchStudentPage(COLLECTIONS.attendance, loadedStudent, ATTENDANCE_FIELDS),
-                     fetchStudentRecords(COLLECTIONS.grades, loadedStudent),
-                     fetchStudentRecords(COLLECTIONS.homeworkResults, loadedStudent),
--                    fetchStudentPage(COLLECTIONS.clinic, loadedStudent, CLINIC_FIELDS),
-+                    fetchStudentClinicPage(loadedStudent),
-                     fetchByStudentKeys(COLLECTIONS.payments, loadedStudent).catch(() => []),
-                     fetchByStudentKeys(COLLECTIONS.materials, loadedStudent).catch(() => []),
-                 ]);
-                 const attendanceRows = attendancePage.rows;
-                 const clinicRows = clinicPage.rows;
+     const classMap = useMemo(() => new Map(classes.map((item) => [String(item.id), item])), [classes]);
+     const testMap = useMemo(() => new Map(tests.map((item) => [String(item.id), item])), [tests]);
+     const assignmentMap = useMemo(() => new Map(homeworkAssignments.map((item) => [
+         String(item.id || item.assignmentId),
+         item,
+     ])), [homeworkAssignments]);
+     const sortedClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
+     const sortedAttendances = useMemo(
+         () => sortNewest(attendances, ['date', 'lessonDate', 'createdAt']),
+         [attendances],
+     );
+     const gradeRows = useMemo(() => buildStudentGradeRows({
+         grades, testMap, classMap, classTestStats, getClassId, isClosedClass, resolveClassTestStats,
+     }), [grades, testMap, classMap, classTestStats]);
+     const sortedGrades = useMemo(
+         () => [...gradeRows].sort((a, b) => (
+             (toDate(b.testDate)?.getTime() || 0) - (toDate(a.testDate)?.getTime() || 0)
+         )),
+         [gradeRows],
+     );
+     const sortedClinics = useMemo(
+-        () => sortNewest(clinicLogs, ['date', 'clinicDate', 'createdAt']),
++        () => sortNewest(clinicLogs, ['effectiveDate', 'date', 'clinicDate', 'reservationDate', 'scheduledAt', 'startAt', 'createdAt']),
+         [clinicLogs],
+     );
  
-                 const classIds = new Set(getStudentClassIds(loadedStudent));
-                 [...attendanceRows, ...gradeRows, ...homeworkRows, ...clinicRows].forEach((item) => {
-                     const classId = getClassId(item);
-                     if (classId) classIds.add(classId);
-                 });
-                 const testIds = gradeRows.map(resolveGradeTestId).filter(Boolean);
-                 const assignmentIds = homeworkRows.map(resolveHomeworkAssignmentId).filter(Boolean);
-                 const testRows = await fetchByIds(COLLECTIONS.tests, testIds);
-                 testRows.forEach((test) => {
-                     const classId = getClassId(test);
-                     if (classId) classIds.add(classId);
-                 });
-                 const statsIds = testRows
-                     .filter((test) => test.id && getClassId(test))
-                     .map((test) => `${getClassId(test)}_${test.id}`);
-                 const [classRows, assignmentRowsByClass, assignmentRowsById, statsRows] = await Promise.all([
-                     fetchByIds(COLLECTIONS.classes, [...classIds]),
-                     fetchByClassIds(COLLECTIONS.homeworkAssignments, [...classIds]),
-                     fetchByIds(COLLECTIONS.homeworkAssignments, assignmentIds),
-@@ -550,56 +582,53 @@ export default function StudentDetail() {
+     const attendanceSummary = useMemo(() => {
+         const presentCount = sortedAttendances.filter((item) => isPresent(firstValue(item, ['status', 'attendanceStatus']))).length;
+         const videoCount = sortedAttendances.filter((item) => isVideoMakeup(firstValue(item, ['status', 'attendanceStatus']))).length;
+         const absentCount = sortedAttendances.filter((item) => isAbsent(firstValue(item, ['status', 'attendanceStatus']))).length;
+         const lateCount = sortedAttendances.filter((item) => isLate(firstValue(item, ['status', 'attendanceStatus']))).length;
+         return {
+             recent: sortedAttendances.slice(0, 4),
+             presentCount,
+             videoCount,
+             absentCount,
+             lateCount,
+             rate: sortedAttendances.length
+                 ? Math.round(((presentCount + videoCount) / sortedAttendances.length) * 100)
+                 : null,
+         };
+     }, [sortedAttendances]);
+ 
+     const latestGrade = sortedGrades[0];
      const latestClinic = sortedClinics[0];
      const clinicMinutes = useMemo(() => clinicLogs.reduce((total, item) => {
          const direct = Number(firstValue(item, ['durationMinutes', 'minutes'], 0));
          if (Number.isFinite(direct) && direct > 0) return total + direct;
-         const start = toDate(firstValue(item, ['checkIn', 'startAt']));
-         const end = toDate(firstValue(item, ['checkOut', 'endAt']));
-         return start && end ? total + Math.max(0, Math.round((end - start) / 60000)) : total;
-     }, 0), [clinicLogs]);
- 
+@@ -591,51 +604,51 @@ export default function StudentDetail() {
      const homeworkRows = useMemo(() => sortNewest(buildStudentHomeworkRows({
          homeworkResults, assignmentMap, studentId: student?.id,
      }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, assignmentMap, student?.id]);
@@ -276,22 +481,17 @@ index a74c28d6eb4b9f99a36efbabd94bcb3ca493546a..d2fab341cf3ffb5a91f61960b4cbe28c
          const setMoreLoading = isAttendance ? setAttendanceMoreLoading : setClinicMoreLoading;
          setMoreLoading(true);
          try {
--            const page = await fetchStudentPage(
--                isAttendance ? COLLECTIONS.attendance : COLLECTIONS.clinic,
--                student,
--                isAttendance ? ATTENDANCE_FIELDS : CLINIC_FIELDS,
--                isAttendance ? attendanceCursors : clinicCursors,
--            );
-+            const page = isAttendance
-+                ? await fetchStudentPage(COLLECTIONS.attendance, student, ATTENDANCE_FIELDS, attendanceCursors)
-+                : await fetchStudentClinicPage(student, clinicCursors);
+             const page = isAttendance
+                 ? await fetchStudentPage(COLLECTIONS.attendance, student, ATTENDANCE_FIELDS, attendanceCursors)
+                 : await fetchStudentClinicPage(student, clinicCursors);
              if (isAttendance) {
                  setAttendances((current) => sortNewest(mergeById([current, page.rows]), ['date']));
                  setAttendanceCursors(page.cursors);
                  setAttendanceHasMore(page.hasMore);
              } else {
                  setClinicLogs((current) => {
-                     const merged = sortNewest(mergeById([current, page.rows]), ['date']);
+-                    const merged = sortNewest(mergeById([current, page.rows]), ['date']);
++                    const merged = sortNewest(mergeById([current, page.rows]), ['effectiveDate', 'date', 'clinicDate', 'reservationDate', 'scheduledAt', 'startAt', 'createdAt']);
                      if (process.env.NODE_ENV !== 'production') {
                          console.log('[studentDetail][clinic:more]', {
                              previousClinicCount: current.length,
@@ -310,3 +510,71 @@ index a74c28d6eb4b9f99a36efbabd94bcb3ca493546a..d2fab341cf3ffb5a91f61960b4cbe28c
              }
          } catch (loadError) {
              console.error(`[StudentDetail] ${type} pagination failed`, loadError);
+         } finally {
+             setMoreLoading(false);
+         }
+     };
+ 
+     const handleCreateTimeline = async () => {
+         const content = timelineDraft.trim();
+@@ -864,55 +877,55 @@ export default function StudentDetail() {
+                         { key: 'average', label: '평균', render: (row) => formatScoreStat(row.classAverage) },
+                         { key: 'highest', label: '최고점', render: (row) => formatScoreStat(row.highestScore) },
+                         { key: 'submitted', label: '응시자 수', render: (row) => row.submittedCount ?? '통계 준비 중' },
+                         { key: 'attempted', label: '응시 여부', render: (row) => isNotAttempted(row) ? '미응시' : '응시' },
+                     ]} />
+                 </SectionCard>
+             );
+         }
+         if (activeTab === 'homework') {
+             return (
+                 <SectionCard title="과제" description="해당 학생의 과제 결과만 표시합니다.">
+                     <DataTable rows={homeworkRows} emptyText="과제 결과가 없습니다." columns={[
+                         { key: 'title', label: '과제명', render: (row) => row.assignmentTitle },
+                         { key: 'class', label: '클래스', render: className },
+                         { key: 'date', label: '출제일', render: (row) => formatDate(firstValue(row, ['assignedDate', 'date', 'createdAt'])) },
+                         { key: 'status', label: '제출/완료', render: (row) => firstValue(row, ['status', 'submissionStatus'], row?.completed ? '완료' : '미완료') },
+                         { key: 'summary', label: '문항 요약', render: (row) => row.questionSummary },
+                     ]} />
+                 </SectionCard>
+             );
+         }
+         if (activeTab === 'clinic') {
+             return (
+                 <SectionCard title="클리닉" description={`현재 표시된 기록 합계 ${clinicMinutes ? `${Math.floor(clinicMinutes / 60)}시간 ${clinicMinutes % 60}분` : '집계 정보 없음'}`}>
+                     <DataTable rows={sortedClinics} emptyText="클리닉 기록이 없습니다." columns={[
+-                        { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'clinicDate', 'createdAt'])) },
+-                        { key: 'time', label: '시간', render: (row) => firstValue(row, ['plannedTime', 'time'], formatTime(firstValue(row, ['checkIn', 'startAt']))) },
+-                        { key: 'teacher', label: '담당자', render: (row) => firstValue(row, ['tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'updatedByName', 'createdByName'], '담당자 미지정') },
+-                        { key: 'status', label: '상태', render: (row) => firstValue(row, ['status', 'clinicStatus'], '-') },
+-                        { key: 'comment', label: '코멘트', render: (row) => firstValue(row, ['clinicComment', 'comment', 'content'], '-') },
++                        { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['effectiveDate', 'date', 'clinicDate', 'reservationDate', 'scheduledAt', 'startAt', 'createdAt'])) },
++                        { key: 'time', label: '시간', render: (row) => firstValue(row, ['effectiveTime', 'plannedTime', 'time'], formatTime(firstValue(row, ['checkIn', 'startAt']))) },
++                        { key: 'teacher', label: '담당자', render: (row) => firstValue(row, ['effectiveStaffName', 'tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'updatedByName', 'createdByName'], '담당자 미지정') },
++                        { key: 'status', label: '상태', render: (row) => firstValue(row, ['effectiveStatus', 'status', 'clinicStatus'], '-') },
++                        { key: 'comment', label: '코멘트', render: (row) => firstValue(row, ['effectiveComment', 'clinicComment', 'comment', 'content'], '-') },
+                     ]} />
+                     <div className="no-print mt-4 text-center">
+                         {clinicHasMore ? (
+                             <button type="button" disabled={clinicMoreLoading} onClick={() => loadMore('clinic')} className="rounded-lg border border-[#455fab] px-4 py-2 text-xs font-bold text-[#455fab] disabled:opacity-50">
+                                 {clinicMoreLoading ? '불러오는 중...' : '클리닉 4개 더보기'}
+                             </button>
+                         ) : sortedClinics.length > 0 && <p className="text-xs text-gray-400">더 이상 기록이 없습니다.</p>}
+                     </div>
+                 </SectionCard>
+             );
+         }
+         if (activeTab === 'timeline') {
+             if (!canUseTimeline) return <EmptyState>교직원만 접근할 수 있습니다.</EmptyState>;
+             return (
+                 <SectionCard title="교직원 타임라인" description="학생/학부모에게 노출되지 않는 내부 기록입니다.">
+                     <div className="mb-5 rounded-xl border border-[#dfe6ff] bg-[#f8f9ff] p-4">
+                         <textarea value={timelineDraft} onChange={(event) => setTimelineDraft(event.target.value)} placeholder="새 교직원 메모를 입력하세요." className="min-h-[90px] w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-[#455fab] focus:outline-none" />
+                         <div className="mt-2 flex items-center justify-between">
+                             <p className="text-xs text-rose-600">{timelineError}</p>
+                             <button type="button" disabled={timelineSaving || !timelineDraft.trim()} onClick={handleCreateTimeline} className="rounded-lg bg-[#455fab] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{timelineSaving ? '저장 중...' : '메모 등록'}</button>
+                         </div>
+                     </div>
+                     {timelineLoading ? <EmptyState>타임라인을 불러오는 중입니다.</EmptyState> : (
+                         <div className="space-y-3">
+                             {timeline.map((thread) => <StaffTimelineThreadCard key={thread.id} thread={thread} actor={actor} onChanged={loadTimeline} showStudentName={false} />)}

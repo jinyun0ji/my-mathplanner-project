@@ -32,13 +32,14 @@ import {
 import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
 import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
 import { formatScoreStat } from '../utils/scoreDisplay';
-import { buildStudentGradeRows, buildStudentHomeworkRows, fetchStudentPageCore } from '../domain/studentDetail/studentDetailScreen.logic';
+import { buildStudentClinicRows, buildStudentGradeRows, buildStudentHomeworkRows, fetchStudentPageCore } from '../domain/studentDetail/studentDetailScreen.logic';
 
 const COLLECTIONS = {
     users: 'users',
     classes: 'classes',
     attendance: 'attendanceLogs',
     clinic: 'clinicLogs',
+    clinicReservations: 'clinicReservations',
     grades: 'grades',
     tests: 'tests',
     homeworkResults: 'homeworkResults',
@@ -189,19 +190,31 @@ export const CLINIC_FIELDS = [
 // 필드가 없는 문서를 제외하므로, 일반 학생 상세의 클리닉 목록만 식별자별 전체를
 // 한 번 읽고 effective date를 클라이언트에서 정렬한 뒤 화면 단위로 나눈다.
 export const fetchStudentClinicPage = async (student, cursors = {}) => {
-    const pairs = studentQueryPairs(student, CLINIC_FIELDS);
+    const identityPairs = studentQueryPairs(student, CLINIC_FIELDS);
+    const pairs = ['clinicLogs', 'clinicReservations'].flatMap((source) => (
+        identityPairs.map(([field, value]) => [`${source}:${field}`, value])
+    ));
     return fetchStudentPageCore({
-        pairs, cursors, pageSize: PAGE_SIZE, mergeRows: mergeById,
-        sortRows: (rows) => sortNewest(rows, ['date', 'clinicDate', 'createdAt']),
-        fetchPair: async ({ field, value }) => {
+        pairs, cursors, pageSize: PAGE_SIZE,
+        mergeRows: (groups) => {
+            const rows = groups.flat();
+            return buildStudentClinicRows({
+                clinicLogs: mergeById([rows.filter((row) => row.sourceType === 'clinicLog')]),
+                clinicReservations: mergeById([rows.filter((row) => row.sourceType === 'clinicReservation')]),
+            });
+        },
+        sortRows: (rows) => rows,
+        fetchPair: async ({ field: sourceField, value }) => {
+            const [source, field] = sourceField.split(':');
             const snapshot = await getDocs(query(
-                collection(db, COLLECTIONS.clinic),
+                collection(db, source),
                 where(field, '==', value),
             ));
-            const docs = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+            const sourceType = source === COLLECTIONS.clinicReservations ? 'clinicReservation' : 'clinicLog';
+            const docs = snapshot.docs.map((item) => ({ id: item.id, ...item.data(), sourceType }));
             if (process.env.NODE_ENV !== 'production') {
                 console.log('[studentDetail][clinic:query]', {
-                    field,
+                    field: sourceField,
                     value,
                     previousCursorId: null,
                     returnedIds: docs.map((item) => item.id),
@@ -557,7 +570,7 @@ export default function StudentDetail() {
         [gradeRows],
     );
     const sortedClinics = useMemo(
-        () => sortNewest(clinicLogs, ['date', 'clinicDate', 'createdAt']),
+        () => sortNewest(clinicLogs, ['effectiveDate', 'date', 'clinicDate', 'reservationDate', 'scheduledAt', 'startAt', 'createdAt']),
         [clinicLogs],
     );
 
@@ -613,7 +626,7 @@ export default function StudentDetail() {
                 setAttendanceHasMore(page.hasMore);
             } else {
                 setClinicLogs((current) => {
-                    const merged = sortNewest(mergeById([current, page.rows]), ['date']);
+                    const merged = sortNewest(mergeById([current, page.rows]), ['effectiveDate', 'date', 'clinicDate', 'reservationDate', 'scheduledAt', 'startAt', 'createdAt']);
                     if (process.env.NODE_ENV !== 'production') {
                         console.log('[studentDetail][clinic:more]', {
                             previousClinicCount: current.length,
@@ -886,11 +899,11 @@ export default function StudentDetail() {
             return (
                 <SectionCard title="클리닉" description={`현재 표시된 기록 합계 ${clinicMinutes ? `${Math.floor(clinicMinutes / 60)}시간 ${clinicMinutes % 60}분` : '집계 정보 없음'}`}>
                     <DataTable rows={sortedClinics} emptyText="클리닉 기록이 없습니다." columns={[
-                        { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['date', 'clinicDate', 'createdAt'])) },
-                        { key: 'time', label: '시간', render: (row) => firstValue(row, ['plannedTime', 'time'], formatTime(firstValue(row, ['checkIn', 'startAt']))) },
-                        { key: 'teacher', label: '담당자', render: (row) => firstValue(row, ['tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'updatedByName', 'createdByName'], '담당자 미지정') },
-                        { key: 'status', label: '상태', render: (row) => firstValue(row, ['status', 'clinicStatus'], '-') },
-                        { key: 'comment', label: '코멘트', render: (row) => firstValue(row, ['clinicComment', 'comment', 'content'], '-') },
+                        { key: 'date', label: '날짜', render: (row) => formatDate(firstValue(row, ['effectiveDate', 'date', 'clinicDate', 'reservationDate', 'scheduledAt', 'startAt', 'createdAt'])) },
+                        { key: 'time', label: '시간', render: (row) => firstValue(row, ['effectiveTime', 'plannedTime', 'time'], formatTime(firstValue(row, ['checkIn', 'startAt']))) },
+                        { key: 'teacher', label: '담당자', render: (row) => firstValue(row, ['effectiveStaffName', 'tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'updatedByName', 'createdByName'], '담당자 미지정') },
+                        { key: 'status', label: '상태', render: (row) => firstValue(row, ['effectiveStatus', 'status', 'clinicStatus'], '-') },
+                        { key: 'comment', label: '코멘트', render: (row) => firstValue(row, ['effectiveComment', 'clinicComment', 'comment', 'content'], '-') },
                     ]} />
                     <div className="no-print mt-4 text-center">
                         {clinicHasMore ? (

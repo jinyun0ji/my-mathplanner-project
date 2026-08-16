@@ -2,10 +2,11 @@ import { isClosedClass } from '../../utils/classStatus';
 import React from 'react';
 import { render, screen, within } from '@testing-library/react';
 import { resolveClassTestStats } from '../grade/classTestStats.service';
-import { DataTable } from '../../pages/StudentDetail';
+import { CLINIC_FIELDS, DataTable } from '../../pages/StudentDetail';
 import {
     buildStudentGradeRows,
     buildStudentHomeworkRows,
+    buildStudentClinicRows,
     fetchStudentPageCore,
 } from './studentDetailScreen.logic';
 
@@ -132,5 +133,61 @@ describe('StudentDetail normal-screen regression paths', () => {
 
         expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(9);
         rows.forEach((row) => expect(screen.getByText(row.label)).toBeInTheDocument());
+    });
+
+    test('merges walk-in logs and historical reservations while excluding future and cancelled bookings', () => {
+        const clinicLogs = Array.from({ length: 4 }, (_, index) => ({
+            id: `walk-in-${index + 1}`,
+            studentId: 'student-doc',
+            clinicDate: `2026-08-0${index + 1}`,
+            status: 'attended',
+        }));
+        const clinicReservations = [
+            { id: 'past-pending', studentDocId: 'student-doc', date: '2026-08-10', status: 'pending' },
+            { id: 'past-attended', authUid: 'student-auth', reservationDate: '2026-08-11', status: 'attended' },
+            { id: 'past-no-show', studentUid: 'student-doc', scheduledAt: '2026-08-12T17:00:00Z', status: 'no-show' },
+            { id: 'future', studentDocId: 'student-doc', date: '2026-08-20', status: 'pending' },
+            { id: 'cancelled', studentDocId: 'student-doc', date: '2026-08-09', status: 'cancelled' },
+        ];
+
+        const rows = buildStudentClinicRows({ clinicLogs, clinicReservations, now: new Date('2026-08-16T12:00:00Z') });
+
+        expect(rows).toHaveLength(7);
+        expect(rows.map((row) => row.id)).toEqual([
+            'past-no-show', 'past-attended', 'past-pending',
+            'walk-in-4', 'walk-in-3', 'walk-in-2', 'walk-in-1',
+        ]);
+        expect(rows.map((row) => row.id)).not.toEqual(expect.arrayContaining(['future', 'cancelled']));
+        expect(rows.find((row) => row.id === 'past-attended')).toMatchObject({
+            studentId: 'student-auth', sourceType: 'clinicReservation', effectiveDate: '2026-08-11',
+        });
+    });
+
+    test('deduplicates only explicit reservation links or cross-collection document ids', () => {
+        const rows = buildStudentClinicRows({
+            clinicLogs: [
+                { id: 'report-1', studentId: 'student-doc', date: '2026-08-10', reservationId: 'reservation-1' },
+                { id: 'same-id', studentId: 'student-doc', date: '2026-08-09' },
+                { id: 'separate-visit', studentId: 'student-doc', date: '2026-08-10' },
+            ],
+            clinicReservations: [
+                { id: 'reservation-1', studentDocId: 'student-doc', date: '2026-08-10', status: 'attended' },
+                { id: 'same-id', studentDocId: 'student-doc', date: '2026-08-09', status: 'attended' },
+            ],
+            now: new Date('2026-08-16T12:00:00Z'),
+        });
+
+        expect(rows.map((row) => row.id)).toEqual(['report-1', 'separate-visit', 'same-id']);
+        expect(rows.filter((row) => row.id === 'same-id')).toHaveLength(1);
+    });
+
+    test('queries clinic reservations through document and auth identity aliases', () => {
+        expect(CLINIC_FIELDS.map(([field]) => field)).toEqual(expect.arrayContaining([
+            'studentId', 'studentDocId', 'studentUid', 'authUid', 'uid', 'userUid',
+        ]));
+        const studentDocAliases = CLINIC_FIELDS.find(([field]) => field === 'studentDocId')[1];
+        const authAliases = CLINIC_FIELDS.find(([field]) => field === 'authUid')[1];
+        expect(studentDocAliases).toEqual(expect.arrayContaining(['id', 'authUid']));
+        expect(authAliases).toEqual(expect.arrayContaining(['id', 'authUid', 'userUid']));
     });
 });
