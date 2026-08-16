@@ -50,6 +50,17 @@ const isCorrectAnswer = (value) => {
     return value === true || value === 1 || value === '맞음' || value === '고침';
 };
 
+export const buildCompetitionRanking = (rows = []) => {
+    const ordered = [...rows].sort(
+        (a, b) => b.score - a.score || String(a.name || a.studentName || '').localeCompare(String(b.name || b.studentName || ''), 'ko'),
+    );
+    let currentRank = 0;
+    return ordered.map((item, index) => {
+        if (index === 0 || item.score < ordered[index - 1].score) currentRank = index + 1;
+        return { ...item, rank: currentRank };
+    });
+};
+
 export const isAbsentGrade = (grade) => {
     if (!grade) return true;
     if (isAbsentGradeRecord(grade)) return true;
@@ -215,15 +226,8 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages, cl
         studentId: s.id,
     }));
 
-    const rankedScores = attemptedScores.sort((a, b) => b.score - a.score);
-
-    let currentRank = 1;
-    let rank = rankedScores.map((item, index) => {
-        if (index > 0 && item.score < rankedScores[index - 1].score) {
-            currentRank = index + 1;
-        }
-        return { score: item.score, studentId: item.studentId, rank: currentRank };
-    });
+    const rank = buildCompetitionRanking(attemptedScores)
+        .map(({ score, studentId, rank: position }) => ({ score, studentId, rank: position }));
 
     const correctRates = {};
     const totalAttempted = attemptedStudents.length;

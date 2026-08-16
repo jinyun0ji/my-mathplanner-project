@@ -1,413 +1,891 @@
-diff --git a/src/components/StudentDetail/StudentDetailPrint.jsx b/src/components/StudentDetail/StudentDetailPrint.jsx
-index f95275c3b2f227887ad69cee157dc4e1095adf9d..18371267f16c0cf90859e6aed18c6d4ae94a9437 100644
---- a/src/components/StudentDetail/StudentDetailPrint.jsx
-+++ b/src/components/StudentDetail/StudentDetailPrint.jsx
-@@ -66,53 +66,53 @@ export default function StudentDetailPrint({ data }) {
-                 { label: '클래스', render: data.className },
-                 { label: '상태', render: (row) => value(row, ['status', 'attendanceStatus']) },
-                 { label: '메모/사유', render: (row) => value(row, ['memo', 'reason', 'note']) },
-             ]} /></PrintSection>
-             <PrintSection title="숙제"><PrintTable rows={data.homework} columns={[
-                 { label: '과제명', render: (row) => row.assignmentTitle || '-' },
-                 { label: '클래스', render: data.className },
-                 { label: '출제일', render: (row) => date(value(row, ['assignedDate', 'date', 'createdAt'], '')) },
-                 { label: '제출/완료', render: (row) => value(row, ['status', 'submissionStatus']) },
-                 { label: '문항 요약', render: (row) => row.questionSummary || '-' },
-             ]} /></PrintSection>
-             <PrintSection title="시험"><PrintTable rows={data.tests} columns={[
-                 { label: '시험명', render: (row) => value(row, ['name', 'title', 'testName']) },
-                 { label: '클래스', render: data.className },
-                 { label: '시험일', render: (row) => date(value(row, ['testDate', 'date', 'createdAt'], '')) },
-             ]} /></PrintSection>
-             <PrintSection title="성적"><PrintTable rows={data.grades} columns={[
-                 { label: '시험명', render: (row) => value(row.test, ['name', 'title', 'testName'], value(row, ['testName', 'name'])) },
-                 { label: '클래스', render: data.className },
-                 { label: '날짜', render: (row) => date(row.testDate) },
-                 { label: '학생 점수', render: (row) => data.formatScore(row) },
-                 { label: '평균', render: (row) => row.classAverage ?? '-' },
-                 { label: '최고점', render: (row) => row.highestScore ?? '-' },
-             ]} /></PrintSection>
-             <PrintSection title="클리닉"><PrintTable rows={data.clinics} columns={[
--                { label: '날짜', render: (row) => date(value(row, ['date', 'clinicDate', 'createdAt'], '')) },
--                { label: '시간', render: (row) => value(row, ['plannedTime', 'time']) },
--                { label: '담당자', render: (row) => value(row, ['tutorName', 'assistantName', 'teacherName', 'createdByName'], '담당자 미지정') },
--                { label: '상태', render: (row) => value(row, ['status', 'clinicStatus']) },
--                { label: '코멘트', render: (row) => value(row, ['clinicComment', 'comment', 'content']) },
-+                { label: '날짜', render: (row) => date(value(row, ['effectiveDate', 'date', 'clinicDate', 'reservationDate', 'scheduledAt', 'startAt', 'createdAt'], '')) },
-+                { label: '시간', render: (row) => value(row, ['effectiveTime', 'plannedTime', 'time', 'checkIn', 'startAt']) },
-+                { label: '담당자', render: (row) => value(row, ['effectiveStaffName', 'tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'createdByName'], '담당자 미지정') },
-+                { label: '상태', render: (row) => value(row, ['effectiveStatus', 'status', 'clinicStatus']) },
-+                { label: '코멘트', render: (row) => value(row, ['effectiveComment', 'clinicComment', 'comment', 'content']) },
-             ]} /></PrintSection>
-             <PrintSection title="상담"><PrintTable rows={consultationRows} columns={[
-                 { label: '날짜', render: (row) => date(value(row, ['date', 'consultedAt', 'createdAt'], '')) },
-                 { label: '담당자', render: (row) => value(row, ['staffName', 'teacherName', 'createdByName']) },
-                 { label: '내용', render: (row) => value(row, ['content', 'memo', 'note', 'summary']) },
-             ]} /></PrintSection>
-             <PrintSection title="교직원 타임라인"><PrintTable rows={data.timeline} columns={[
-                 { label: '날짜', render: (row) => date(value(row, ['createdAt', 'date'], '')) },
-                 { label: '제목', render: (row) => value(row, ['title'], '교직원 메모') },
-                 { label: '작성자', render: (row) => value(row, ['createdByName', 'staffName']) },
-                 { label: '내용', render: (row) => value(row, ['content']) },
-                 { label: '상태', render: (row) => row.status === 'completed' ? '완료' : '진행 중' },
-             ]} /></PrintSection>
-             <PrintSection title="결제/교재"><PrintTable rows={data.paymentMaterials} columns={[
-                 { label: '구분', render: (row) => row.recordType },
-                 { label: '날짜', render: (row) => date(value(row, ['date', 'paidAt', 'receivedAt', 'createdAt'], '')) },
-                 { label: '항목', render: (row) => value(row, ['title', 'itemName', 'bookName', 'description']) },
-                 { label: '금액', render: (row) => value(row, ['amount', 'price']) },
-                 { label: '상태', render: (row) => value(row, ['status', 'paymentStatus', 'receiveStatus']) },
-             ]} /></PrintSection>
-         </article>
-     );
- }
-diff --git a/src/components/StudentDetail/StudentDetailPrint.test.jsx b/src/components/StudentDetail/StudentDetailPrint.test.jsx
-new file mode 100644
-index 0000000000000000000000000000000000000000..7ec55c2b8bc6fc3d1096987f35b41e6f0e291cc2
---- /dev/null
-+++ b/src/components/StudentDetail/StudentDetailPrint.test.jsx
-@@ -0,0 +1,44 @@
-+import React from 'react';
-+import { render, screen, within } from '@testing-library/react';
-+import StudentDetailPrint from './StudentDetailPrint';
-+
-+const printData = (clinics) => ({
-+    student: { name: '테스트 학생' },
-+    infoRows: [], classes: [], attendances: [], homework: [], tests: [], grades: [],
-+    clinics, timeline: [], paymentMaterials: [],
-+    className: () => '-', formatScore: () => '-',
-+});
-+
-+describe('StudentDetailPrint clinics', () => {
-+    test.each([4, 8])('prints exactly the %i clinic rows currently supplied by screen state', (count) => {
-+        const clinics = Array.from({ length: count }, (_, index) => ({
-+            id: `clinic-${index + 1}`,
-+            sourceType: index === count - 1 ? 'clinicReservation' : 'clinicLog',
-+            effectiveComment: `클리닉 ${index + 1}`,
-+        }));
-+        render(<StudentDetailPrint data={printData(clinics)} />);
-+
-+        const clinicTable = screen.getByRole('heading', { name: '클리닉' }).closest('section').querySelector('table');
-+        expect(within(clinicTable).getAllByRole('row')).toHaveLength(count + 1);
-+        expect(screen.getByText(`클리닉 ${count}`)).toBeInTheDocument();
-+    });
-+
-+    test('prefers every normalized clinic field over legacy fields', () => {
-+        render(<StudentDetailPrint data={printData([{
-+            id: 'reservation-1', sourceType: 'clinicReservation',
-+            effectiveDate: '2026-08-15', date: '2020-01-01',
-+            effectiveTime: '17:30', plannedTime: '09:00',
-+            effectiveStaffName: '정규화 담당자', tutorName: '기존 담당자',
-+            effectiveStatus: '예약 완료', status: '기존 상태',
-+            effectiveComment: '정규화 코멘트', clinicComment: '기존 코멘트',
-+        }])} />);
-+
-+        const clinicSection = screen.getByRole('heading', { name: '클리닉' }).closest('section');
-+        expect(clinicSection).toHaveTextContent('2026. 8. 15.');
-+        expect(clinicSection).toHaveTextContent('17:30');
-+        expect(clinicSection).toHaveTextContent('정규화 담당자');
-+        expect(clinicSection).toHaveTextContent('예약 완료');
-+        expect(clinicSection).toHaveTextContent('정규화 코멘트');
-+        expect(clinicSection).not.toHaveTextContent('기존 담당자');
-+    });
-+});
-diff --git a/src/domain/studentDetail/studentDetailScreen.logic.js b/src/domain/studentDetail/studentDetailScreen.logic.js
-index 58d4717fde96e3a1d1b3c7e85d95fcff0d3f9e13..754001ae8a6d95ea951671cd1529b66a50b622b1 100644
---- a/src/domain/studentDetail/studentDetailScreen.logic.js
-+++ b/src/domain/studentDetail/studentDetailScreen.logic.js
-@@ -168,49 +168,53 @@ export const buildStudentClinicRows = ({ clinicLogs = [], clinicReservations = [
-         // history even if malformed data carries a future date; future pending bookings do not.
-         const date = clinicDate(resolveStudentClinicDate(item));
-         if (!COMPLETED_CLINIC_STATUSES.has(status) && (!date || date > endOfToday)) return [];
-         return [normalizeStudentClinicRow(item, 'clinicReservation')];
-     });
+diff --git a/src/components/Grade/GradePrintDocument.jsx b/src/components/Grade/GradePrintDocument.jsx
+index 72bb2120233592127c4ec65945889070b310ac45..6ec537c9ff2864490e63197729e18db1ac8c8a4c 100644
+--- a/src/components/Grade/GradePrintDocument.jsx
++++ b/src/components/Grade/GradePrintDocument.jsx
+@@ -1,156 +1,133 @@
+-import React, { forwardRef, useMemo } from 'react';
++import React, { forwardRef } from 'react';
  
-     const seen = new Set();
-     return [...logs, ...reservations]
-         .filter((row) => {
-             // Same document id is only a duplicate across the two source collections. Within a
-             // collection ids are unique, and no date/time heuristic is used to merge real visits.
-             const key = `${row.sourceType}:${row.id}`;
-             const crossSourceKey = `document:${row.id}`;
-             if (seen.has(key) || (reservationsById.has(row.id) && row.sourceType === 'clinicReservation' && seen.has(crossSourceKey))) return false;
-             seen.add(key);
-             seen.add(crossSourceKey);
-             return true;
-         })
-         .sort((a, b) => {
-             const timeDifference = (clinicDate(b.effectiveDate)?.getTime() || 0) - (clinicDate(a.effectiveDate)?.getTime() || 0);
-             if (timeDifference) return timeDifference;
-             return String(b.effectiveTime || '').localeCompare(String(a.effectiveTime || ''));
-         });
- };
+-const formatValue = (value, digits = 1) => (
+-  Number.isFinite(Number(value)) ? Number(value).toFixed(digits) : '-'
++const formatNumber = (value, digits = 1) => (
++  Number.isFinite(Number(value)) ? Number(value).toFixed(digits).replace(/\.0$/, '') : '-'
+ );
  
-+// Printing must snapshot only the rows the clinic tab has loaded. Keeping this pure also makes it
-+// impossible for print preparation to trigger a clinicLogs/clinicReservations read by itself.
-+export const buildStudentClinicPrintRows = (screenClinicRows = []) => [...screenClinicRows];
+-const GradePrintDocument = forwardRef(function GradePrintDocument(props, ref) {
+-  const {
+-    classNameText,
+-    testTitle,
+-    testDateText,
+-    stats,
+-    chart,
+-    questionStats,
+-    printScale = 1,
+-  } = props;
++const ScoreDistribution = ({ scores = [], average = null, maxScore = null }) => {
++  const ceiling = Math.max(Number(maxScore) || 0, ...scores, 1);
++  const x = (score) => 28 + (Math.max(0, Math.min(ceiling, score)) / ceiling) * 544;
++  const lanes = [62, 72, 82, 92];
+ 
+-  const top5Text = useMemo(
+-    () => (stats?.top5 || []).map((x) => `${x.name}(${formatValue(x.score)})`).join(', '),
+-    [stats],
+-  );
+-  const bottom5Text = useMemo(
+-    () => (stats?.bottom5 || []).map((x) => `${x.name}(${formatValue(x.score)})`).join(', '),
+-    [stats],
++  return (
++    <svg className="score-distribution" viewBox="0 0 600 118" role="img" aria-label="전체 응시자의 실제 점수와 평균 위치">
++      <line x1="28" y1="78" x2="572" y2="78" className="distribution-axis" />
++      {[0, ceiling / 2, ceiling].map((tick) => (
++        <g key={tick}>
++          <line x1={x(tick)} y1="74" x2={x(tick)} y2="83" className="distribution-axis" />
++          <text x={x(tick)} y="105" textAnchor="middle" className="distribution-label">{formatNumber(tick)}</text>
++        </g>
++      ))}
++      {Number.isFinite(average) && (
++        <g>
++          <line x1={x(average)} y1="21" x2={x(average)} y2="83" className="average-marker" />
++          <text x={x(average)} y="14" textAnchor="middle" className="average-label">평균 {formatNumber(average)}</text>
++        </g>
++      )}
++      {scores.map((score, index) => (
++        <circle key={`${score}-${index}`} cx={x(score)} cy={lanes[index % lanes.length]} r="3.2" className="student-marker" />
++      ))}
++    </svg>
+   );
+-
+-  const maxBinCount = Math.max(...(chart?.bins || []).map((x) => x.count || 0), 1);
+-  const BAR_AREA_H = 160;
+-
++};
 +
- export const fetchStudentPageCore = async ({ pairs, cursors = {}, pageSize, fetchPair, mergeRows, sortRows }) => {
-     const bufferedRows = Array.isArray(cursors.__buffer) ? cursors.__buffer : [];
-     if (bufferedRows.length >= pageSize) {
-         return {
-             rows: bufferedRows.slice(0, pageSize),
-             cursors: { ...cursors, __buffer: bufferedRows.slice(pageSize) },
-             hasMore: true,
-         };
-     }
-     const results = await Promise.all(pairs.map(async ([field, value]) => {
-         const cursorKey = `${field}:${value}`;
-         if (cursors[cursorKey] === null) return { cursorKey, docs: [], cursor: null, hasMore: false };
-         return { cursorKey, ...await fetchPair({ field, value, cursor: cursors[cursorKey] }) };
-     }));
-     const nextCursors = { ...cursors };
-     results.forEach((result) => { nextCursors[result.cursorKey] = result.hasMore ? result.cursor : null; });
-     const mergedRows = sortRows(mergeRows([bufferedRows, ...results.map((result) => result.docs)]));
-     nextCursors.__buffer = mergedRows.slice(pageSize);
-     return {
-         rows: mergedRows.slice(0, pageSize),
-         cursors: nextCursors,
-         hasMore: nextCursors.__buffer.length > 0 || results.some((result) => result.hasMore),
-     };
- };
-diff --git a/src/domain/studentDetail/studentDetailScreen.logic.test.js b/src/domain/studentDetail/studentDetailScreen.logic.test.js
-index 50b5ef3b3205392912df75b14b9f944991d20620..e508d2061a149dbd050c871822696cb656bfb1f6 100644
---- a/src/domain/studentDetail/studentDetailScreen.logic.test.js
-+++ b/src/domain/studentDetail/studentDetailScreen.logic.test.js
-@@ -1,38 +1,55 @@
- import { isClosedClass } from '../../utils/classStatus';
- import React from 'react';
- import { render, screen, within } from '@testing-library/react';
- import { resolveClassTestStats } from '../grade/classTestStats.service';
- import { CLINIC_FIELDS, DataTable } from '../../pages/StudentDetail';
- import {
-     buildStudentGradeRows,
-     buildStudentHomeworkRows,
-     buildStudentClinicRows,
-+    buildStudentClinicPrintRows,
-     fetchStudentPageCore,
- } from './studentDetailScreen.logic';
- 
- describe('StudentDetail normal-screen regression paths', () => {
-+    test.each([4, 8])('snapshots exactly %i loaded clinic rows for print without a fetch callback', (count) => {
-+        const fetchClinic = jest.fn();
-+        const screenRows = Array.from({ length: count }, (_, index) => ({
-+            id: `clinic-${index}`,
-+            sourceType: index === count - 1 ? 'clinicReservation' : 'clinicLog',
-+        }));
-+
-+        const printRows = buildStudentClinicPrintRows(screenRows);
-+
-+        expect(printRows).toEqual(screenRows);
-+        expect(printRows).not.toBe(screenRows);
-+        expect(printRows).toHaveLength(count);
-+        expect(printRows.some((row) => row.sourceType === 'clinicReservation')).toBe(true);
-+        expect(fetchClinic).not.toHaveBeenCalled();
-+    });
-+
-     test('joins a grade to its real test and class', () => {
-         const rows = buildStudentGradeRows({
-             grades: [{ id: 'grade-1', testId: 'test-1', score: 91 }],
-             testMap: new Map([['test-1', { id: 'test-1', classId: 'class-1', title: '8월 시험' }]]),
-             classMap: new Map([['class-1', { id: 'class-1', name: '중2 수학' }]]),
-             classTestStats: {},
-             getClassId: (record) => String(record.classId || ''),
-             isClosedClass,
-             resolveClassTestStats,
-         });
- 
-         expect(rows).toHaveLength(1);
-         expect(rows[0].classDoc.name).toBe('중2 수학');
-     });
- 
-     test('keeps a historical grade whose class is closed', () => {
-         const rows = buildStudentGradeRows({
-             grades: [{ id: 'grade-closed', testId: 'test-closed', score: 88 }],
-             testMap: new Map([['test-closed', { id: 'test-closed', classId: 'class-closed', title: '기말고사' }]]),
-             classMap: new Map([['class-closed', { id: 'class-closed', name: '종강반', status: 'closed', active: false }]]),
-             classTestStats: {},
-             getClassId: (record) => String(record.classId || ''),
-             isClosedClass,
-             resolveClassTestStats,
-         });
-diff --git a/src/pages/StudentDetail.jsx b/src/pages/StudentDetail.jsx
-index 69915b7153b98800fc7f1e832213a34ee603f281..a8addf3253e38990131090994f2b5b88c781c7c8 100644
---- a/src/pages/StudentDetail.jsx
-+++ b/src/pages/StudentDetail.jsx
-@@ -10,51 +10,51 @@ import {
-     orderBy,
-     query,
-     startAfter,
-     where,
- } from 'firebase/firestore';
- import { db } from '../firebase/client';
- import useAuth from '../auth/useAuth';
- import { ROLE } from '../constants/roles';
- import StaffTimelineThreadCard from '../components/StaffTimeline/StaffTimelineThreadCard';
- import StudentDetailPrint from '../components/StudentDetail/StudentDetailPrint';
- import {
-     createStaffTimelineThread,
-     fetchStaffTimelineByStudent,
- } from '../domain/staffTimeline/staffTimeline.service';
- import { getStudentGradeLabel } from '../utils/gradeUtils';
- import { isClosedClass, sortClassesWithClosedLast } from '../utils/classStatus';
- import { isSameStudentByAnyKey } from '../utils/studentKey';
- import {
-     resolveHomeworkAssignmentId,
-     resolveHomeworkAssignmentTitle,
-     resolveHomeworkQuestionSummary,
- } from '../domain/homework/homework.service';
- import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
- import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
- import { formatScoreStat } from '../utils/scoreDisplay';
--import { buildStudentClinicRows, buildStudentGradeRows, buildStudentHomeworkRows, fetchStudentPageCore } from '../domain/studentDetail/studentDetailScreen.logic';
-+import { buildStudentClinicPrintRows, buildStudentClinicRows, buildStudentGradeRows, buildStudentHomeworkRows, fetchStudentPageCore } from '../domain/studentDetail/studentDetailScreen.logic';
- 
- const COLLECTIONS = {
-     users: 'users',
-     classes: 'classes',
-     attendance: 'attendanceLogs',
-     clinic: 'clinicLogs',
-     clinicReservations: 'clinicReservations',
-     grades: 'grades',
-     tests: 'tests',
-     homeworkResults: 'homeworkResults',
-     homeworkAssignments: 'homeworkAssignments',
-     payments: 'payments',
-     materials: 'materialPurchases',
- };
- 
- const TABS = [
-     ['profile', '기본정보'],
-     ['classes', '수강반'],
-     ['attendance', '출결'],
-     ['grades', '성적'],
-     ['homework', '과제'],
-     ['clinic', '클리닉'],
-     ['timeline', '교직원 타임라인'],
-     ['payments', '결제/교재'],
- ];
-@@ -688,109 +688,119 @@ export default function StudentDetail() {
-                 </button>
-             </EmptyState>
-         );
-     }
- 
-     const className = (record) => record?.className
-         || firstValue(classMap.get(getClassId(record)), ['name', 'className', 'title'])
-         || firstValue(record, ['className'], '(클래스 미상)');
-     const activeClassCount = sortedClasses.filter((item) => !isClosedClass(item)).length;
-     const infoRows = [
-         ['이름', student.name || '-'],
-         ['학교', student.school || '-'],
-         ['학년', getStudentGradeLabel(student)],
-         ['연락처', firstValue(student, ['phone', 'studentPhone'], '-')],
-         ['학부모 연락처', firstValue(student, ['parentPhone', 'guardianPhone'], '-')],
-         ['등록일', formatDate(firstValue(student, ['registeredAt', 'joinedAt', 'createdAt']))],
-         ['상태', student.status || '-'],
-         ['출생년도', student.birthYear || '-'],
-     ];
- 
-     const handlePrint = async () => {
-         if (printPreparing) return;
-         setPrintPreparing(true);
-         setPrintError('');
-         try {
--            const [allAttendances, allClinics, allGrades, allHomework, allPayments, allMaterials, allTimeline] = await Promise.all([
-+            // The clinic tab is deliberately the source of truth for printing: do not fetch either
-+            // clinic collection here, because that would make the printout differ from the loaded page.
-+            const currentClinicsForPrint = buildStudentClinicPrintRows(sortedClinics);
-+            const [allAttendances, allGrades, allHomework, allPayments, allMaterials, allTimeline] = await Promise.all([
-                 fetchByStudentKeys(COLLECTIONS.attendance, student, null),
--                fetchByStudentKeys(COLLECTIONS.clinic, student, null),
-                 fetchStudentRecords(COLLECTIONS.grades, student, null),
-                 fetchStudentRecords(COLLECTIONS.homeworkResults, student, null),
-                 fetchByStudentKeys(COLLECTIONS.payments, student, null).catch(() => []),
-                 fetchByStudentKeys(COLLECTIONS.materials, student, null).catch(() => []),
-                 canUseTimeline ? fetchStaffTimelineByStudent(db, student, { limitCount: null }) : Promise.resolve([]),
-             ]);
-             const matchedAttendances = allAttendances.filter((item) => isSameStudentByAnyKey(item, student));
--            const matchedClinics = allClinics.filter((item) => isSameStudentByAnyKey(item, student));
-             const matchedGrades = allGrades.filter((item) => isSameStudentByAnyKey(item, student));
-             const matchedHomework = allHomework.filter((item) => isSameStudentByAnyKey(item, student));
-             const baseClassIds = getStudentClassIds(student);
-             const referencedTestIds = matchedGrades.map(resolveGradeTestId).filter(Boolean);
-             const [referencedTests, classTests] = await Promise.all([
-                 fetchByIds(COLLECTIONS.tests, referencedTestIds),
-                 fetchByClassIds(COLLECTIONS.tests, baseClassIds, null),
-             ]);
-             const printTests = mergeById([referencedTests, classTests]);
-             const printClassIds = [...new Set([
-                 ...baseClassIds,
-                 ...matchedAttendances.map(getClassId),
--                ...matchedClinics.map(getClassId),
-+                ...currentClinicsForPrint.map(getClassId),
-                 ...printTests.map(getClassId),
-             ].filter(Boolean))];
-             const assignmentIds = matchedHomework.map(resolveHomeworkAssignmentId).filter(Boolean);
-             const statsIds = printTests.filter((test) => test.id && getClassId(test)).map((test) => `${getClassId(test)}_${test.id}`);
-             const [printClasses, assignmentsByClass, assignmentsById, printStats] = await Promise.all([
-                 fetchByIds(COLLECTIONS.classes, printClassIds),
-                 fetchByClassIds(COLLECTIONS.homeworkAssignments, printClassIds, null),
-                 fetchByIds(COLLECTIONS.homeworkAssignments, assignmentIds),
-                 fetchByIds('classTestStats', statsIds),
-             ]);
-             const printClassMap = new Map(printClasses.map((item) => [String(item.id), item]));
-             const printTestMap = new Map(printTests.map((item) => [String(item.id), item]));
-             const printAssignmentMap = new Map(mergeById([assignmentsByClass, assignmentsById]).map((item) => [String(item.id), item]));
-             const printStatsMap = Object.fromEntries(printStats.map((item) => [item.id, item]));
-             const resolvedGrades = matchedGrades.flatMap((grade) => {
-                 const test = printTestMap.get(String(resolveGradeTestId(grade)));
-                 if (!test) return [];
-                 const classDoc = printClassMap.get(getClassId(test));
-                 const stats = resolveClassTestStats(test, printStatsMap);
-                 return [{ ...grade, test, testDate: firstValue(test, ['testDate', 'date', 'createdAt']), ...resolveGradeDisplay({ grade, test, classDoc }), classAverage: stats?.average ?? test.average ?? null, highestScore: stats?.maxScore ?? test.maxScore ?? null }];
-             });
-             const resolvedHomework = matchedHomework.flatMap((result) => {
-                 const assignment = printAssignmentMap.get(String(resolveHomeworkAssignmentId(result)));
-                 if (!assignment) return [];
-                 return [{ ...assignment, ...result, assignmentTitle: resolveHomeworkAssignmentTitle(assignment), questionSummary: resolveHomeworkQuestionSummary(assignment, result) }];
-             });
-             const printClassName = (record) => record?.className
-                 || firstValue(printClassMap.get(getClassId(record)), ['name', 'className', 'title'])
-                 || firstValue(record, ['className'], '(클래스 미상)');
-+            if (process.env.NODE_ENV !== 'production') {
-+                const clinicId = (item) => `${item.sourceType || 'clinicLog'}:${item.id}`;
-+                console.log('[studentDetail][print:clinic]', {
-+                    screenClinicCount: clinicLogs.length,
-+                    screenClinicIds: clinicLogs.map(clinicId),
-+                    printClinicCount: currentClinicsForPrint.length,
-+                    printClinicIds: currentClinicsForPrint.map(clinicId),
-+                });
-+            }
-             setPrintData({
-                 student,
-                 infoRows,
-                 classes: sortClassesWithClosedLast(printClasses),
-                 attendances: sortNewest(matchedAttendances, ['date', 'lessonDate', 'createdAt']),
--                clinics: sortNewest(matchedClinics, ['date', 'clinicDate', 'createdAt']),
-+                clinics: currentClinicsForPrint,
-                 tests: sortNewest(printTests, ['testDate', 'date', 'createdAt']),
-                 grades: sortNewest(resolvedGrades, ['testDate', 'date', 'createdAt']),
-                 homework: sortNewest(resolvedHomework, ['assignedDate', 'date', 'createdAt']),
-                 timeline: allTimeline,
-                 paymentMaterials: [
-                     ...allPayments.map((item) => ({ ...item, recordType: '결제' })),
-                     ...allMaterials.map((item) => ({ ...item, recordType: '교재' })),
-                 ],
-                 className: printClassName,
-                 formatScore,
-             });
-             await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-             window.print();
-             setPrintData(null);
-         } catch (printLoadError) {
-             console.error('[StudentDetail] print data load failed', printLoadError);
-             setPrintError('인쇄용 전체 데이터를 준비하지 못했습니다. 다시 시도해주세요.');
-             setPrintData(null);
-         } finally {
-             setPrintPreparing(false);
++const GradePrintDocument = forwardRef(function GradePrintDocument({
++  classNameText,
++  testTitle,
++  testDateText,
++  stats = {},
++  scores = [],
++  rankings = [],
++  questionStats = [],
++  printScale = 1,
++}, ref) {
+   return (
+-    <div
+-      ref={ref}
+-      className="print-root grade-print-root no-print-scroll"
+-      style={{ transform: `scale(${printScale})`, transformOrigin: 'top left' }}
+-    >
++    <article ref={ref} className="print-root grade-print-root" style={{ '--preview-scale': printScale }}>
+       <style>{`
+-        @page { size: A4 landscape; margin: 10mm; }
++        @page { size: A4 portrait; margin: 13mm 14mm 15mm; }
++        @media screen { .grade-print-root { transform: scale(var(--preview-scale)); transform-origin: top left; } }
+         @media print {
+-          .no-print { display: none !important; }
+-          .page-break { page-break-before: always; break-before: page; }
+-          /* print.css가 있는 경우에도 여기서 추가 보정 */
+           .print-root, .print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
++          .grade-print-root { width: auto !important; min-height: 0 !important; transform: none !important; }
          }
+-
+-        .grade-print-root { color: #111827; font-family: ui-sans-serif, system-ui, -apple-system; }
+-        .print-title { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+-        .print-sub { font-size: 12px; color: #374151; margin-bottom: 10px; font-weight: 700; }
+-
+-        /* ✅ A4 가로 2단 구성(1페이지) */
+-        .print-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; align-items: start; }
+-        .avoid-break { break-inside: avoid; page-break-inside: avoid; }
+-
+-        .card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; }
+-        .card h3 { font-size: 12px; font-weight: 900; color: #374151; margin-bottom: 6px; }
+-        .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+-        .kv > div { border: 1px solid #e5e7eb; border-radius: 6px; padding: 8px; }
+-        .kv .k { font-size: 11px; color: #374151; font-weight: 800; }
+-        .kv .v { font-size: 14px; font-weight: 900; margin-top: 2px; }
+-        .rank { font-size: 12px; line-height: 1.4; color: #111827; font-weight: 700; }
+-
+-        .chartWrap { border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px; }
+-        .chartTitle { font-size: 12px; font-weight: 900; color: #374151; margin-bottom: 8px; }
+-
+-        /* ✅ 라벨이 잘리지 않도록 bar영역/라벨영역 분리 */
+-        .bars { display: flex; gap: 6px; align-items: flex-end; }
+-        .barCol { flex: 1; display: flex; flex-direction: column; align-items: stretch; }
+-        .barArea { height: ${BAR_AREA_H}px; display: flex; align-items: flex-end; }
+-        .bar { width: 100%; border: 1px solid #d1d5db; border-radius: 6px 6px 0 0; position: relative; background: #eef2ff; }
+-        .barCount { position: absolute; top: -16px; left: 0; right: 0; text-align: center; font-size: 11px; color: #111827; font-weight: 900; }
+-        .barLabel { font-size: 11px; color: #111827; text-align: center; margin-top: 6px; font-weight: 800; }
+-
+-        .tbl { width: 100%; border-collapse: collapse; }
+-        .tbl th, .tbl td { border: 1px solid #111827; padding: 6px 6px; font-size: 11px; }
+-        .tbl th { background: #f3f4f6; font-weight: 900; color: #111827; }
+-        .tbl td { color: #111827; }
++        .grade-print-root { box-sizing: border-box; width: 182mm; min-height: 257mm; color: #172033; background: #fff; font-family: Pretendard, "Noto Sans KR", ui-sans-serif, system-ui, sans-serif; font-size: 9.5pt; line-height: 1.45; }
++        .report-header { padding-bottom: 7mm; border-bottom: 1.4px solid #263b72; break-inside: avoid; page-break-inside: avoid; }
++        .report-kicker { margin: 0 0 2mm; color: #455fab; font-size: 8pt; font-weight: 800; letter-spacing: .12em; }
++        .report-title { margin: 0; font-size: 22pt; line-height: 1.2; letter-spacing: -.035em; }
++        .report-meta { display: flex; gap: 5mm; margin: 3mm 0 0; color: #596273; font-size: 9pt; }
++        .metric-strip { display: grid; grid-template-columns: 1.25fr repeat(3, 1fr); margin: 7mm 0 8mm; padding: 4mm 0; border-top: 1px solid #d9dee8; border-bottom: 1px solid #d9dee8; break-inside: avoid; page-break-inside: avoid; }
++        .metric { padding: 0 5mm; border-left: 1px solid #e1e5ec; }
++        .metric:first-child { padding-left: 0; border-left: 0; }
++        .metric-label { display: block; margin-bottom: 1mm; color: #667085; font-size: 7.5pt; font-weight: 700; }
++        .metric-value { color: #172033; font-size: 15pt; font-weight: 800; letter-spacing: -.02em; }
++        .section { margin-top: 8mm; }
++        .section-heading { margin: 0 0 3mm; padding-bottom: 2mm; border-bottom: 1px solid #d9dee8; color: #263b72; font-size: 12pt; font-weight: 800; break-after: avoid; page-break-after: avoid; }
++        .section-note { margin: -2mm 0 3mm; color: #697386; font-size: 8pt; }
++        .distribution-wrap { padding: 3mm 1mm 0; break-inside: avoid; page-break-inside: avoid; }
++        .score-distribution { display: block; width: 100%; height: 35mm; overflow: visible; }
++        .distribution-axis { stroke: #70798a; stroke-width: 1; }
++        .distribution-label { fill: #596273; font-size: 11px; }
++        .student-marker { fill: #fff; stroke: #455fab; stroke-width: 1.6; }
++        .average-marker { stroke: #172033; stroke-width: 1.2; stroke-dasharray: 4 3; }
++        .average-label { fill: #172033; font-size: 11px; font-weight: 800; }
++        .report-table { width: 100%; border-collapse: collapse; border-spacing: 0; }
++        .report-table thead { display: table-header-group; }
++        .report-table tr { break-inside: avoid; page-break-inside: avoid; }
++        .report-table th { padding: 2.2mm 2.5mm; border-bottom: 1.2px solid #65718a; color: #4e596b; font-size: 7.5pt; font-weight: 800; text-align: left; }
++        .report-table td { padding: 2.2mm 2.5mm; border-bottom: 1px solid #e1e5ec; }
++        .report-table th:first-child, .report-table td:first-child { width: 14%; text-align: center; }
++        .report-table .numeric { text-align: right; font-variant-numeric: tabular-nums; }
++        .rank-number { font-weight: 800; color: #263b72; }
++        .empty-row { padding: 8mm !important; color: #7b8494; text-align: center !important; }
++        .question-section { break-before: auto; }
++        .question-table th:first-child, .question-table td:first-child { width: 18%; }
++        .report-footer { margin-top: 7mm; padding-top: 2mm; border-top: 1px solid #d9dee8; color: #7b8494; font-size: 7pt; }
+       `}</style>
+ 
+-            {/* ================= 1페이지 ================= */}
+-      <div className="avoid-break">
+-        <div className="print-title">{classNameText} · {testDateText}</div>
+-        <div className="print-sub">{testTitle}</div>
+-
+-        <div className="print-grid">
+-          <div className="card avoid-break">
+-            <h3>시험 요약</h3>
+-            <div className="kv">
+-              <div><div className="k">응시자 수</div><div className="v">{stats?.count ?? '-'}</div></div>
+-              <div><div className="k">평균</div><div className="v">{formatValue(stats?.avg)}</div></div>
+-              <div><div className="k">중앙값</div><div className="v">{formatValue(stats?.median)}</div></div>
+-              <div><div className="k">표준편차</div><div className="v">{formatValue(stats?.stddev)}</div></div>
+-            </div>
+-
+-            <div style={{ marginTop: 10 }} className="kv">
+-              <div>
+-                <div className="k">최고점 Top 5</div>
+-                <div className="rank">{top5Text || '-'}</div>
+-              </div>
+-              <div>
+-                <div className="k">최저점 Bottom 5</div>
+-                <div className="rank">{bottom5Text || '-'}</div>
+-              </div>
+-            </div>
+-          </div>
+-
+-          <div className="chartWrap avoid-break">
+-            <div className="chartTitle">점수분포 그래프(원점수)</div>
+-            <div className="bars">
+-              {(chart?.bins || []).map((b, idx) => {
+-                const h = Math.round(((b.count || 0) / maxBinCount) * BAR_AREA_H);
+-                return (
+-                  <div key={`${b.label}-${idx}`} className="barCol">
+-                    <div className="barArea">
+-                      <div className="bar" style={{ height: `${h}px` }}>
+-                        <div className="barCount">{b.count || 0}</div>
+-                      </div>
+-                    </div>
+-                    <div className="barLabel">{b.label}</div>
+-                  </div>
+-                );
+-              })}
+-            </div>
+-          </div>
+-        </div>
+-      </div>
+-
+-      {/* ================= 2페이지 ================= */}
+-      <div className="page-break" />
+-
+-      <div className="card">
+-        <h3>문항별 정답률(응시자 기준)</h3>
+-        <table className="tbl">
+-          <thead>
+-            <tr>
+-              <th style={{ width: 80 }}>문항</th>
+-              <th style={{ width: 120 }}>정답자</th>
+-              <th style={{ width: 120 }}>응시자</th>
+-              <th>정답률</th>
+-            </tr>
+-          </thead>
++      <header className="report-header">
++        <p className="report-kicker">시험 결과 리포트</p>
++        <h1 className="report-title">{testTitle}</h1>
++        <p className="report-meta"><span>{classNameText}</span><span>시험일 {testDateText}</span></p>
++      </header>
++
++      <section className="metric-strip" aria-label="시험 핵심 통계">
++        <div className="metric"><span className="metric-label">전체 응시자</span><strong className="metric-value">{stats.submittedCount ?? 0}명</strong></div>
++        <div className="metric"><span className="metric-label">평균</span><strong className="metric-value">{formatNumber(stats.average)}점</strong></div>
++        <div className="metric"><span className="metric-label">최고점</span><strong className="metric-value">{formatNumber(stats.maxScore)}점</strong></div>
++        <div className="metric"><span className="metric-label">최저점</span><strong className="metric-value">{formatNumber(stats.minScore)}점</strong></div>
++      </section>
++
++      <section className="section distribution-wrap">
++        <h2 className="section-heading">성적 분포</h2>
++        <p className="section-note">점 하나가 응시자 한 명의 실제 원점수이며, 점이 겹치지 않도록 세로 위치만 나누었습니다.</p>
++        <ScoreDistribution scores={scores} average={stats.average} maxScore={stats.maxScore} />
++      </section>
++
++      <section className="section ranking-section">
++        <h2 className="section-heading">응시자 성적 순위</h2>
++        <table className="report-table ranking-table">
++          <thead><tr><th>석차</th><th>학생</th><th className="numeric">점수</th><th className="numeric">평균 대비</th></tr></thead>
+           <tbody>
+-            {(questionStats || []).map((row) => (
+-              <tr key={row.q}>
+-                <td style={{ textAlign: 'center', fontWeight: 900 }}>{row.q}</td>
+-                <td style={{ textAlign: 'center' }}>{row.correct}</td>
+-                <td style={{ textAlign: 'center' }}>{row.total}</td>
+-                <td style={{ textAlign: 'center' }}>{Math.round((row.rate || 0) * 10) / 10}%</td>
+-              </tr>
+-            ))}
++            {rankings.length ? rankings.map((row) => {
++              const delta = row.score - stats.average;
++              return <tr key={row.studentId}><td className="rank-number">{row.rank}</td><td>{row.studentName}</td><td className="numeric">{formatNumber(row.score)}</td><td className="numeric">{delta > 0 ? '+' : ''}{formatNumber(delta)}</td></tr>;
++            }) : <tr><td colSpan="4" className="empty-row">응시 결과가 없습니다.</td></tr>}
+           </tbody>
+         </table>
+-      </div>
+-    </div>
++      </section>
++
++      {questionStats.length > 0 && <section className="section question-section">
++        <h2 className="section-heading">문항별 분석</h2>
++        <p className="section-note">전체 응시자의 저장된 정오답 데이터를 기준으로 계산했습니다.</p>
++        <table className="report-table question-table">
++          <thead><tr><th>문항</th><th className="numeric">배점</th><th className="numeric">정답자</th><th className="numeric">응시자</th><th className="numeric">정답률</th></tr></thead>
++          <tbody>{questionStats.map((row) => <tr key={row.question}><td>{row.question}</td><td className="numeric">{row.pointValue == null ? '-' : formatNumber(row.pointValue)}</td><td className="numeric">{row.correctCount}</td><td className="numeric">{row.submittedCount}</td><td className="numeric">{formatNumber(row.correctRate)}%</td></tr>)}</tbody>
++        </table>
++      </section>}
++
++      <footer className="report-footer">본 문서는 성적 관리 화면의 저장 데이터를 기준으로 생성되었습니다.</footer>
++    </article>
+   );
+ });
+ 
+-export default GradePrintDocument;
+\ No newline at end of file
++export default GradePrintDocument;
+diff --git a/src/components/Grade/GradePrintDocument.test.jsx b/src/components/Grade/GradePrintDocument.test.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..eb95aed3232973ee3a2eab021566e5b6f9e8108e
+--- /dev/null
++++ b/src/components/Grade/GradePrintDocument.test.jsx
+@@ -0,0 +1,36 @@
++import React from 'react';
++import { render, screen } from '@testing-library/react';
++import GradePrintDocument from './GradePrintDocument';
++
++const report = {
++    classNameText: '중등 A반',
++    testTitle: '8월 정기 테스트',
++    testDateText: '2026-08-16',
++    stats: { submittedCount: 3, average: 90, maxScore: 100, minScore: 80 },
++    scores: [100, 90, 80],
++    rankings: [
++        { studentId: '1', studentName: '김학생', score: 100, rank: 1 },
++        { studentId: '2', studentName: '이학생', score: 90, rank: 2 },
++        { studentId: '3', studentName: '박학생', score: 80, rank: 3 },
++    ],
++    questionStats: [{ question: 1, pointValue: 10, correctCount: 2, submittedCount: 3, correctRate: 66.666 }],
++};
++
++describe('GradePrintDocument', () => {
++    test('renders the complete ranking and actual-score distribution without top/bottom lists', () => {
++        const { container } = render(<GradePrintDocument {...report} />);
++
++        expect(screen.getByText('응시자 성적 순위')).toBeInTheDocument();
++        expect(screen.getAllByRole('row')).toHaveLength(6); // ranking + question headers and rows
++        expect(screen.getByLabelText('전체 응시자의 실제 점수와 평균 위치').querySelectorAll('.student-marker')).toHaveLength(3);
++        expect(screen.getByText('평균 90')).toBeInTheDocument();
++        expect(container).not.toHaveTextContent('최고점 Top 5');
++        expect(container).not.toHaveTextContent('최저점 Bottom 5');
++    });
++
++    test('renders question point value and accuracy from the resolver', () => {
++        render(<GradePrintDocument {...report} />);
++        expect(screen.getByText('문항별 분석')).toBeInTheDocument();
++        expect(screen.getByText('66.7%')).toBeInTheDocument();
++    });
++});
+diff --git a/src/domain/grade/grade.service.js b/src/domain/grade/grade.service.js
+index afe40858646ce218463679b1544e70cf5f2da4dd..0c1975cc4d27154974211c3ddad29aadacef3554 100644
+--- a/src/domain/grade/grade.service.js
++++ b/src/domain/grade/grade.service.js
+@@ -28,50 +28,61 @@ export const resolveGradeDisplay = ({ grade = {}, test = {}, classDoc = {} } = {
+         [
+             { value: grade.classAverage },
+             { value: grade.average },
+             { value: test.average },
+             { value: test.classAverage },
+         ],
+         ['value'],
+         null,
+     ),
+     highestScore: firstDisplayValue(
+         [
+             { value: grade.classMax },
+             { value: grade.maxScore },
+             { value: test.maxScore },
+             { value: test.highestScore },
+         ],
+         ['value'],
+         null,
+     ),
+ });
+ 
+ const isCorrectAnswer = (value) => {
+     return value === true || value === 1 || value === '맞음' || value === '고침';
+ };
+ 
++export const buildCompetitionRanking = (rows = []) => {
++    const ordered = [...rows].sort(
++        (a, b) => b.score - a.score || String(a.name || a.studentName || '').localeCompare(String(b.name || b.studentName || ''), 'ko'),
++    );
++    let currentRank = 0;
++    return ordered.map((item, index) => {
++        if (index === 0 || item.score < ordered[index - 1].score) currentRank = index + 1;
++        return { ...item, rank: currentRank };
++    });
++};
++
+ export const isAbsentGrade = (grade) => {
+     if (!grade) return true;
+     if (isAbsentGradeRecord(grade)) return true;
+ 
+     const score = toFiniteScoreNumber(pickScoreValue(grade));
+     if (score !== null) return false;
+ 
+     const answerMap = grade.answers || grade.correctCount;
+     if (answerMap && typeof answerMap === 'object' && !Array.isArray(answerMap)) {
+         return Object.keys(answerMap).length === 0;
+     }
+     if (Array.isArray(grade.questionResults) && grade.questionResults.length > 0) return false;
+     if (grade.scores && typeof grade.scores === 'object' && !Array.isArray(grade.scores)) {
+         return Object.keys(grade.scores).length === 0;
+     }
+ 
+     return true;
+ };
+ 
+ const getPerQuestionScore = (test, index) => {
+     if (Array.isArray(test?.questionScores) && test.questionScores.length > 0) {
+         const value = test.questionScores[index];
+         if (Number.isFinite(Number(value))) return Number(value);
+     }
+ 
+@@ -193,59 +204,52 @@ const computeTestStatisticsInternal = (test, students, grades, classAverages, cl
+         if (isAbsentGrade(grade)) return null;
+         return getTotalScore(grade, test);
      };
  
-     const renderTab = () => {
-         if (activeTab === 'profile') {
+     const scores = eligibleStudents
+         .map(s => getStudentScore(s.id))
+         .filter(score => Number.isFinite(score));
+ 
+     if (scores.length === 0) {
+         return { average: null, maxScore: null, minScore: null, stdDev: null, correctRates: {}, rank: [] };
+     }
+ 
+     const average = scores.reduce((sum, s) => sum + s, 0) / scores.length;
+     const maxScore = Math.max(...scores);
+     const minScore = Math.min(...scores);
+     const variance = scores.reduce((sum, s) => sum + Math.pow(s - average, 2), 0) / scores.length;
+     const stdDev = Math.sqrt(variance);
+ 
+     const attemptedStudents = eligibleStudents.filter(s => Number.isFinite(getStudentScore(s.id)));
+     const attemptedScores = attemptedStudents.map(s => ({
+         score: getStudentScore(s.id),
+         name: s.name,
+         studentId: s.id,
+     }));
+ 
+-    const rankedScores = attemptedScores.sort((a, b) => b.score - a.score);
+-
+-    let currentRank = 1;
+-    let rank = rankedScores.map((item, index) => {
+-        if (index > 0 && item.score < rankedScores[index - 1].score) {
+-            currentRank = index + 1;
+-        }
+-        return { score: item.score, studentId: item.studentId, rank: currentRank };
+-    });
++    const rank = buildCompetitionRanking(attemptedScores)
++        .map(({ score, studentId, rank: position }) => ({ score, studentId, rank: position }));
+ 
+     const correctRates = {};
+     const totalAttempted = attemptedStudents.length;
+ 
+     const totalQuestions = Number(test?.totalQuestions) || 0;
+ 
+     if (totalQuestions > 0 && totalAttempted > 0) {
+         for (let i = 1; i <= totalQuestions; i++) {
+             let correctCount = 0;
+             attemptedStudents.forEach(student => {
+                 const grade = gradeMap[student.id]?.[test.id] || {};
+                 const answerMap = grade.answers || grade.correctCount;
+                 const status = answerMap?.[i.toString()];
+                 if (isCorrectAnswer(status)) {
+                     correctCount++;
+                 }
+             });
+             correctRates[i] = correctCount / totalAttempted;
+         }
+     }
+ 
+     return { average, maxScore, minScore, stdDev, correctRates, rank };
+ };
+ 
+ export const getClassStudents = (students = [], selectedClass) => {
+diff --git a/src/domain/grade/gradePrint.logic.js b/src/domain/grade/gradePrint.logic.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..353b398852952c541e1bc93177fd0792a577e3f8
+--- /dev/null
++++ b/src/domain/grade/gradePrint.logic.js
+@@ -0,0 +1,68 @@
++import { buildCompetitionRanking, getTotalScore } from './grade.service';
++
++const isCorrect = (value) => (
++    value === true || value === 1 || value === '1'
++    || value === 'O' || value === 'o' || value === '맞음' || value === '고침'
++);
++
++export const buildGradePrintPayload = ({ students = [], grades = {}, test, className = '-' } = {}) => {
++    if (!test) return {
++        classNameText: className,
++        testTitle: '-',
++        testDate: null,
++        rankings: [],
++        scores: [],
++        stats: { submittedCount: 0, average: null, maxScore: null, minScore: null },
++        questionStats: [],
++    };
++
++    const attemptedRows = students.map((student) => {
++        const grade = grades?.[student.id]?.[test.id] || null;
++        const score = grade ? getTotalScore(grade, test) : null;
++        const noShow = String(grade?.score || '').trim() === '미응시';
++        const attempted = Boolean(grade?.attempted === true || Number.isFinite(score)) && !noShow;
++        return {
++            studentId: student.id,
++            studentName: student.name,
++            score: Number.isFinite(score) ? Number(score) : null,
++            answerMap: grade?.answers || grade?.correctCount || {},
++            attempted,
++        };
++    }).filter((row) => row.attempted && Number.isFinite(row.score));
++
++    const rankings = buildCompetitionRanking(attemptedRows.filter((row) => Number.isFinite(row.score)));
++    const scores = rankings.map((row) => row.score);
++    const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
++    const questionCount = Number(test.totalQuestions)
++        || (Array.isArray(test.questionScores) ? test.questionScores.length : 0);
++    const questionStats = Array.from({ length: questionCount }, (_, index) => {
++        const question = index + 1;
++        const correctCount = attemptedRows.reduce(
++            (count, row) => count + (isCorrect(row.answerMap?.[question] ?? row.answerMap?.[String(question)]) ? 1 : 0),
++            0,
++        );
++        const pointValue = Number(test.questionScores?.[index]);
++        return {
++            question,
++            pointValue: Number.isFinite(pointValue) ? pointValue : null,
++            correctCount,
++            submittedCount: attemptedRows.length,
++            correctRate: attemptedRows.length ? (correctCount / attemptedRows.length) * 100 : null,
++        };
++    });
++
++    return {
++        classNameText: className,
++        testTitle: test.name || test.title || '-',
++        testDate: test.date || test.createdAt || test.updatedAt || null,
++        rankings,
++        scores,
++        stats: {
++            submittedCount: scores.length,
++            average,
++            maxScore: scores.length ? Math.max(...scores) : null,
++            minScore: scores.length ? Math.min(...scores) : null,
++        },
++        questionStats,
++    };
++};
+diff --git a/src/domain/grade/gradePrint.logic.test.js b/src/domain/grade/gradePrint.logic.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..6bf569b7d5b24c2a78bbcf27e2bb213ac094c6c2
+--- /dev/null
++++ b/src/domain/grade/gradePrint.logic.test.js
+@@ -0,0 +1,39 @@
++import { buildCompetitionRanking } from './grade.service';
++import { buildGradePrintPayload } from './gradePrint.logic';
++
++describe('grade print report resolver', () => {
++    test('sorts every submitted student and uses competition ranking for ties', () => {
++        expect(buildCompetitionRanking([
++            { studentId: 'c', studentName: '다', score: 90 },
++            { studentId: 'a', studentName: '가', score: 100 },
++            { studentId: 'b', studentName: '나', score: 95 },
++            { studentId: 'd', studentName: '라', score: 95 },
++        ]).map(({ studentId, score, rank }) => ({ studentId, score, rank }))).toEqual([
++            { studentId: 'a', score: 100, rank: 1 },
++            { studentId: 'b', score: 95, rank: 2 },
++            { studentId: 'd', score: 95, rank: 2 },
++            { studentId: 'c', score: 90, rank: 4 },
++        ]);
++    });
++
++    test('resolves scores, statistics, and real question accuracy without truncating rankings', () => {
++        const students = Array.from({ length: 12 }, (_, index) => ({ id: String(index), name: `학생${index}` }));
++        const grades = Object.fromEntries(students.map((student, index) => [student.id, {
++            exam: { answers: { 1: index < 9 ? 1 : 2, 2: index < 6 ? 1 : 2 } },
++        }]));
++        const payload = buildGradePrintPayload({
++            students,
++            grades,
++            className: 'A반',
++            test: { id: 'exam', name: '정기 테스트', date: '2026-08-16', maxScore: 20, totalQuestions: 2, questionScores: [10, 10] },
++        });
++
++        expect(payload.rankings).toHaveLength(12);
++        expect(payload.rankings.map((row) => row.score)).toEqual([...payload.scores].sort((a, b) => b - a));
++        expect(payload.stats).toEqual({ submittedCount: 12, average: 12.5, maxScore: 20, minScore: 0 });
++        expect(payload.questionStats).toEqual([
++            { question: 1, pointValue: 10, correctCount: 9, submittedCount: 12, correctRate: 75 },
++            { question: 2, pointValue: 10, correctCount: 6, submittedCount: 12, correctRate: 50 },
++        ]);
++    });
++});
+diff --git a/src/pages/GradeManagement.jsx b/src/pages/GradeManagement.jsx
+index 3ecc53e94fc864c689909f373bcafbf833f1107d..a4949f7021092f4f05d97e55d6e22c1e2aa6aae3 100644
+--- a/src/pages/GradeManagement.jsx
++++ b/src/pages/GradeManagement.jsx
+@@ -1,39 +1,39 @@
+ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+ import { Icon } from '../utils/helpers';
+ import ClassSelectionPanel from '../components/Shared/ClassSelectionPanel';
+ import FullGradeTable from '../components/Grade/FullGradeTable';
+ import TestResultTable from '../components/Grade/TestResultTable';
+ import TestStatisticsTable from '../components/Grade/TestStatisticsTable';
+ import { TestFormModal } from '../utils/modals/TestFormModal';
+ import { getClassAverages, getClassTests, getTestStatistics } from '../domain/grade/grade.service';
++import { buildGradePrintPayload } from '../domain/grade/gradePrint.logic';
+ import { getDefaultClassId } from '../utils/classStatus';
+ import { useClassStudents } from '../utils/useClassStudents';
+ import { filterRosterByWithdrawDate } from '../utils/rosterFilter';
+ import { buildStudentParentPhoneLast4Map, formatStudentNameWithParentLast4 } from '../utils/parentPhone';
+ import GradePrintDocument from '../components/Grade/GradePrintDocument';
+-import { getTotalScore } from '../domain/grade/grade.service';
+ 
+ 
+ function useReactToPrint({ content, documentTitle, removeAfterPrint, onBeforeGetContent }) {
+     return useCallback(() => {
+         if (typeof onBeforeGetContent === 'function') onBeforeGetContent();
+ 
+         const node = typeof content === 'function' ? content() : null;
+         if (!node) {
+             throw new Error('There is nothing to print');
+         }
+ 
+         const iframe = document.createElement('iframe');
+         iframe.style.position = 'fixed';
+         iframe.style.right = '0';
+         iframe.style.bottom = '0';
+         iframe.style.width = '0';
+         iframe.style.height = '0';
+         iframe.style.border = '0';
+         document.body.appendChild(iframe);
+ 
+         const printWindow = iframe.contentWindow;
+         const printDoc = printWindow?.document;
+         if (!printDoc || !printWindow) {
+             if (removeAfterPrint) document.body.removeChild(iframe);
+             throw new Error('PRINT_WINDOW_UNAVAILABLE');
+@@ -44,121 +44,57 @@ function useReactToPrint({ content, documentTitle, removeAfterPrint, onBeforeGet
+             .join('');
+ 
+         printDoc.open();
+         printDoc.write(`<!doctype html><html><head><title>${documentTitle || 'print'}</title>${styles}</head><body>${node.outerHTML}</body></html>`);
+         printDoc.close();
+ 
+         const runPrint = () => {
+             printWindow.focus();
+             printWindow.print();
+             if (removeAfterPrint) {
+                 setTimeout(() => {
+                     if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                 }, 300);
+             }
+         };
+ 
+         if (printDoc.readyState === 'complete') {
+             runPrint();
+         } else {
+             iframe.onload = runPrint;
+         }
+     }, [content, documentTitle, onBeforeGetContent, removeAfterPrint]);
+ }
+ 
+ 
+-const asNumber = (value) => (Number.isFinite(value) ? value : Number(value));
+-
+ const formatDateText = (value) => {
+     if (!value) return '-';
+     const candidate = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
+     if (Number.isNaN(candidate.getTime())) return String(value);
+     return candidate.toISOString().slice(0, 10);
+ };
+ 
+-const calculateMedian = (values) => {
+-    if (!values.length) return null;
+-    const sorted = [...values].sort((a, b) => a - b);
+-    const mid = Math.floor(sorted.length / 2);
+-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+-};
+-
+-const calculateStdDev = (values) => {
+-    if (!values.length) return null;
+-    const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+-    const variance = values.reduce((sum, value) => sum + ((value - average) ** 2), 0) / values.length;
+-    return Math.sqrt(variance);
+-};
+-
+-const isCorrectForPrint = (value) => (
+-    value === true || value === 1 || value === '1' || value === 'O' || value === 'o' || value === '맞음' || value === '고침'
+-);
+-
+-function buildRawScoreBins(scores = [], maxScore, binCount = 10) {
+-    const max = Number(maxScore);
+-    if (!Number.isFinite(max) || max <= 0) return { bins: [] };
+-
+-    const step = max / binCount;
+-    const bins = Array.from({ length: binCount }, (_, index) => {
+-        const start = index * step;
+-        const end = index === binCount - 1 ? max : (index + 1) * step;
+-        return {
+-            label: `${Math.round(start * 10) / 10}–${Math.round(end * 10) / 10}`,
+-            count: 0,
+-        };
+-    });
+-
+-    scores.forEach((score) => {
+-        const raw = Number(score);
+-        if (!Number.isFinite(raw)) return;
+-        const idx = Math.min(binCount - 1, Math.max(0, Math.floor(raw / step)));
+-        bins[idx].count += 1;
+-    });
+-
+-    return { bins };
+-}
+-
+-function buildQuestionStats(rows = [], totalQuestions = 0) {
+-    const questionCount = Number(totalQuestions) || 0;
+-    if (questionCount <= 0) return [];
+-
+-    const total = rows.length;
+-    return Array.from({ length: questionCount }, (_, offset) => {
+-        const q = offset + 1;
+-        const correct = rows.reduce((count, row) => {
+-            const value = row.answerMap?.[q] ?? row.answerMap?.[String(q)];
+-            return count + (isCorrectForPrint(value) ? 1 : 0);
+-        }, 0);
+-
+-        return {
+-            q,
+-            correct,
+-            total,
+-            rate: total > 0 ? (correct / total) * 100 : 0,
+-        };
+-    });
+-}
+ 
+ // ----------------------------------------------------------------------
+ // 메인 컴포넌트: GradeManagement
+ // ----------------------------------------------------------------------
+ export default function GradeManagement({
+     classes, tests, grades, handleSaveTest, handleDeleteTest,
+     handleUpdateGrade, handleSaveClass, calculateClassSessions,
+     closures = [],
+     students = [],
+     parents = [],
+ }) {
+     const [selectedClassId, setSelectedClassId] = useState(() => getDefaultClassId(classes));
+     const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+     const [testToEdit, setTestToEdit] = useState(null);
+     const [selectedTestId, setSelectedTestId] = useState(null);
+     const [isGradeInputModalOpen, setIsGradeInputModalOpen] = useState(false);
+     const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+     const [compactPrint, setCompactPrint] = useState(true);
+     const { students: classStudents, isLoading: isLoadingStudents } = useClassStudents(selectedClassId);
+ 
+     // 엑셀 파일 입력을 위한 Ref
+     const fileInputRef = useRef(null);
+     const printRef = useRef(null);
+ 
+     const selectedClass = classes.find(c => String(c.id) === String(selectedClassId));
+@@ -194,100 +130,56 @@ export default function GradeManagement({
+     const rosterForTest = useMemo(
+         () => filterRosterByWithdrawDate(classStudents, selectedClassId, selectedTest?.date),
+         [classStudents, selectedClassId, selectedTest?.date]
+     );
+ 
+     const displayClassStudents = useMemo(() => classStudents.map((student) => ({
+         ...student,
+         name: formatStudentNameWithParentLast4(student, parentLast4Map),
+     })), [classStudents, parentLast4Map]);
+ 
+     const displayRosterForTest = useMemo(() => rosterForTest.map((student) => ({
+         ...student,
+         name: formatStudentNameWithParentLast4(student, parentLast4Map),
+     })), [rosterForTest, parentLast4Map]);
+ 
+     const classAverages = useMemo(
+         () => getClassAverages(classTests, displayClassStudents, grades),
+         [classTests, displayClassStudents, grades]
+     );
+ 
+     const testStatistics = useMemo(
+         () => getTestStatistics(classTests, displayClassStudents, grades, classAverages),
+         [classTests, displayClassStudents, grades, classAverages]
+     );
+ 
+-    const printPayload = useMemo(() => {
+-        if (!selectedTest) {
+-            return {
+-                classNameText: selectedClass?.name || '-',
+-                testTitle: '-',
+-                testDateText: '-',
+-                stats: { count: 0, avg: null, median: null, stddev: null, top5: [], bottom5: [] },
+-                chart: { bins: [] },
+-                questionStats: [],
+-            };
+-        }
+-
+-        const attemptedRows = (displayRosterForTest || []).map((student) => {
+-            const grade = grades?.[student.id]?.[selectedTest.id] || null;
+-            const score = grade ? getTotalScore(grade, selectedTest) : null;
+-            const noShow = String(grade?.score || '').trim() === '미응시';
+-            const attempted = Boolean(grade?.attempted === true || Number.isFinite(score)) && !noShow;
+-            const answerMap = grade?.answers || grade?.correctCount || {};
+-
+-            return {
+-                studentId: student.id,
+-                studentName: student.name,
+-                score: Number.isFinite(score) ? Number(score) : null,
+-                attempted,
+-                answerMap,
+-            };
+-        }).filter((row) => row.attempted && Number.isFinite(row.score));
+-
+-        const scores = attemptedRows.map((row) => row.score);
+-        const ordered = [...attemptedRows].sort((a, b) => b.score - a.score);
+-
+-        return {
+-            classNameText: selectedClass?.name || '-',
+-            testTitle: selectedTest?.name || selectedTest?.title || '-',
+-            testDateText: formatDateText(selectedTest?.date || selectedTest?.createdAt || selectedTest?.updatedAt),
+-            stats: {
+-                count: attemptedRows.length,
+-                avg: scores.length ? scores.reduce((sum, value) => sum + value, 0) / scores.length : null,
+-                median: calculateMedian(scores),
+-                stddev: calculateStdDev(scores),
+-                top5: ordered.slice(0, 5).map((row) => ({ name: row.studentName, score: row.score })),
+-                bottom5: [...ordered].reverse().slice(0, 5).map((row) => ({ name: row.studentName, score: row.score })),
+-            },
+-            chart: buildRawScoreBins(scores, asNumber(selectedTest?.maxScore), 10),
+-            questionStats: buildQuestionStats(
+-                attemptedRows,
+-                Number(selectedTest?.totalQuestions) || (Array.isArray(selectedTest?.questionScores) ? selectedTest.questionScores.length : 0),
+-            ),
+-        };
+-    }, [displayRosterForTest, grades, selectedClass?.name, selectedTest]);
++    const printPayload = useMemo(() => buildGradePrintPayload({
++        students: displayRosterForTest,
++        grades,
++        test: selectedTest,
++        className: selectedClass?.name || '-',
++    }), [displayRosterForTest, grades, selectedClass?.name, selectedTest]);
+ 
+     useEffect(() => {
+         setSelectedTestId(null);
+     }, [selectedClassId]);
+ 
+     // ------------------------------------------
+     // 핸들러 함수들
+     // ------------------------------------------
+ 
+     const handleNewTest = () => {
+         setTestToEdit(null);
+         setIsTestModalOpen(true);
+     };
+ 
+     const handleEditTest = (test) => {
+         setTestToEdit(test);
+         setIsTestModalOpen(true);
+     };
+ 
+     const handleCloseTestModal = () => {
+         setIsTestModalOpen(false);
+         setTestToEdit(null);
+     };
+ 
+     const handleOpenGradeInput = () => {
+@@ -621,47 +513,48 @@ export default function GradeManagement({
+             )}
+ 
+             {selectedTest && isStatsModalOpen && (
+                 <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setIsStatsModalOpen(false)}>
+                     <div className="bg-white rounded-xl shadow-xl w-full max-w-[1400px] max-h-[95vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+                         <div className="flex items-center justify-between mb-4">
+                             <h3 className="text-lg font-bold">{selectedTest.name} 시험결과 인쇄</h3>
+                             <div className="flex gap-2 print-modal-actions">
+                                <label className="flex items-center gap-1 text-sm">
+                                     <input
+                                         type="checkbox"
+                                         checked={compactPrint}
+                                         onChange={(event) => setCompactPrint(event.target.checked)}
+                                     />
+                                     축소 인쇄
+                                 </label>
+                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={handlePrintClick}>인쇄</button>
+                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={() => setIsStatsModalOpen(false)}>닫기</button>
+                             </div>
+                         </div>
+                         <div className="mt-3 border rounded-lg p-2 bg-white overflow-auto" style={{ maxHeight: '75vh' }}>
+                             <GradePrintDocument
+                                 ref={printRef}
+                                 classNameText={printPayload.classNameText}
+                                 testTitle={printPayload.testTitle}
+-                                testDateText={printPayload.testDateText}
++                                testDateText={formatDateText(printPayload.testDate)}
+                                 stats={printPayload.stats}
+-                                chart={printPayload.chart}
++                                scores={printPayload.scores}
++                                rankings={printPayload.rankings}
+                                 questionStats={printPayload.questionStats}
+                                 printScale={compactPrint ? 0.92 : 1}
+                             />
+                         </div>
+                     </div>
+                 </div>
+             )}
+ 
+             {/* 엑셀 파일 업로드 Input */}
+             <input
+                 type="file"
+                 ref={fileInputRef}
+                 onChange={handleFileChange}
+                 accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                 style={{ display: 'none' }}
+             />
+         </div>
+     );
+ };
