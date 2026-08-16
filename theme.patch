@@ -1,205 +1,8 @@
-diff --git a/src/domain/studentDetail/studentDetailScreen.logic.js b/src/domain/studentDetail/studentDetailScreen.logic.js
-index da9827fd18eb289674282348099f138413230d9f..3e8ee96cdfe6828f789dad07939835cc8e81474b 100644
---- a/src/domain/studentDetail/studentDetailScreen.logic.js
-+++ b/src/domain/studentDetail/studentDetailScreen.logic.js
-@@ -1,72 +1,125 @@
- import { resolveGradeDisplay, resolveGradeTestId } from '../grade/grade.service';
- import {
-     buildHomeworkQuestionStats,
-     getHomeworkCompletionLabel,
-     normalizeHomeworkResultMapForDisplay,
-     resolveHomeworkAssignmentId,
-     resolveHomeworkAssignmentTitle,
-     resolveHomeworkQuestionSummary,
- } from '../homework/homework.service';
- 
-+const hasHomeworkTitleMetadata = (record = {}) => Boolean(
-+    record.book || record.title || record.name || record.assignmentTitle
-+    || record.assignmentName || record.homeworkName || record.content
-+);
-+
- // These are the pre-print screen joins, kept separate from the print resolver.
--export const buildStudentGradeRows = ({ grades, testMap, classMap, classTestStats, getClassId, isClosedClass, resolveClassTestStats }) => (
-+export const buildStudentGradeRows = ({ grades, testMap, classMap, classTestStats, getClassId, isClosedClass, resolveClassTestStats, logger }) => (
-     grades.flatMap((grade) => {
--        const test = testMap.get(String(resolveGradeTestId(grade)));
-+        const testId = String(resolveGradeTestId(grade));
-+        const test = testMap.get(testId);
-+        const testClassId = test ? getClassId(test) : '';
-+        const classDoc = testClassId ? classMap.get(testClassId) : undefined;
-+        const included = Boolean(test);
-+        logger?.({
-+            gradeId: grade.id,
-+            testId,
-+            testFound: Boolean(test),
-+            testClassId,
-+            classFound: Boolean(classDoc),
-+            classActive: classDoc?.active,
-+            classClosed: classDoc ? isClosedClass(classDoc) : false,
-+            included,
-+            exclusionReason: included ? '' : 'test-not-found',
-+        });
-         if (!test) return [];
--        const classDoc = classMap.get(getClassId(test));
--        if (!classDoc || classDoc.active === false || isClosedClass(classDoc)) return [];
-         const stats = resolveClassTestStats(test, classTestStats);
-         return [{
-             ...grade,
-             test,
-             classDoc,
-             ...resolveGradeDisplay({ grade, test, classDoc }),
-+            className: classDoc?.name || classDoc?.className || classDoc?.title
-+                || test.className || grade.className || '(클래스 미상)',
-             classAverage: stats?.average ?? test?.average ?? null,
-             highestScore: stats?.maxScore ?? test?.maxScore ?? null,
-             submittedCount: stats?.submittedCount ?? null,
-         }];
-     })
- );
- 
--export const buildStudentHomeworkRows = ({ homeworkResults, assignmentMap, studentId }) => (
-+export const buildStudentHomeworkRows = ({ homeworkResults, assignmentMap, studentId, logger }) => (
-     homeworkResults.flatMap((result) => {
-         const assignmentId = String(resolveHomeworkAssignmentId(result));
-         const assignment = assignmentMap.get(assignmentId);
--        if (!assignment) return [];
-+        if (!assignment) {
-+            logger?.({
-+                resultId: result.id,
-+                assignmentId,
-+                assignmentFound: false,
-+                assignment: null,
-+                finalRow: null,
-+            });
-+            return [];
-+        }
-         const questionNumbers = Array.isArray(assignment.questionNumbers) ? assignment.questionNumbers : [];
-         const questionStats = buildHomeworkQuestionStats({ assignment, result });
-         const completionLabel = getHomeworkCompletionLabel(questionStats);
--        return [{
--            ...assignment,
-+        const assignmentTitle = hasHomeworkTitleMetadata(assignment)
-+            ? resolveHomeworkAssignmentTitle({ ...assignment, title: assignment.title || assignment.assignmentTitle })
-+            : (hasHomeworkTitleMetadata(result)
-+                ? resolveHomeworkAssignmentTitle({ ...result, title: result.title || result.assignmentTitle })
-+                : '과제 정보 없음');
-+        const row = {
-             ...result,
--            assignmentTitle: resolveHomeworkAssignmentTitle(assignment),
-+            ...assignment,
-+            id: result.id,
-+            assignmentId,
-+            assignmentTitle,
-+            classId: assignment.classId || assignment.classDocId || result.classId || result.classDocId || '',
-+            classDocId: assignment.classDocId || assignment.classId || result.classDocId || result.classId || '',
-             status: completionLabel,
-             completed: completionLabel === '완료',
-             questionSummary: resolveHomeworkQuestionSummary(assignment, result),
-             results: normalizeHomeworkResultMapForDisplay(result, questionNumbers, { assignmentId, studentId }),
--        }];
-+        };
-+        logger?.({
-+            resultId: result.id,
-+            assignmentId,
-+            assignmentFound: true,
-+            assignment: {
-+                id: assignment.id,
-+                title: assignment.title,
-+                name: assignment.name,
-+                assignmentTitle: assignment.assignmentTitle,
-+                classId: assignment.classId,
-+                classDocId: assignment.classDocId,
-+            },
-+            finalRow: { assignmentTitle: row.assignmentTitle, classId: row.classId },
-+        });
-+        return [row];
-     })
- );
- 
- export const fetchStudentPageCore = async ({ pairs, cursors = {}, pageSize, fetchPair, mergeRows, sortRows }) => {
-     const bufferedRows = Array.isArray(cursors.__buffer) ? cursors.__buffer : [];
-     if (bufferedRows.length >= pageSize) {
-         return {
-             rows: bufferedRows.slice(0, pageSize),
-             cursors: { ...cursors, __buffer: bufferedRows.slice(pageSize) },
-             hasMore: true,
-         };
-     }
-     const results = await Promise.all(pairs.map(async ([field, value]) => {
-         const cursorKey = `${field}:${value}`;
-         if (cursors[cursorKey] === null) return { cursorKey, docs: [], cursor: null, hasMore: false };
-         return { cursorKey, ...await fetchPair({ field, value, cursor: cursors[cursorKey] }) };
-     }));
-     const nextCursors = { ...cursors };
-     results.forEach((result) => { nextCursors[result.cursorKey] = result.hasMore ? result.cursor : null; });
-     const mergedRows = sortRows(mergeRows([bufferedRows, ...results.map((result) => result.docs)]));
-     nextCursors.__buffer = mergedRows.slice(pageSize);
-     return {
-         rows: mergedRows.slice(0, pageSize),
-         cursors: nextCursors,
-         hasMore: nextCursors.__buffer.length > 0 || results.some((result) => result.hasMore),
 diff --git a/src/domain/studentDetail/studentDetailScreen.logic.test.js b/src/domain/studentDetail/studentDetailScreen.logic.test.js
-index 60873edbb0496872f0ac743d3fb0f9dbcc94ee34..6497d9ca307382620d713d50166e30c6bebb81ba 100644
+index 6497d9ca307382620d713d50166e30c6bebb81ba..cfaf003205ac974664107d72f5bcd4d0a0057ed9 100644
 --- a/src/domain/studentDetail/studentDetailScreen.logic.test.js
 +++ b/src/domain/studentDetail/studentDetailScreen.logic.test.js
-@@ -1,61 +1,113 @@
- import { isClosedClass } from '../../utils/classStatus';
-+import React from 'react';
-+import { render, screen, within } from '@testing-library/react';
- import { resolveClassTestStats } from '../grade/classTestStats.service';
-+import { DataTable } from '../../pages/StudentDetail';
- import {
-     buildStudentGradeRows,
-     buildStudentHomeworkRows,
-     fetchStudentPageCore,
- } from './studentDetailScreen.logic';
- 
- describe('StudentDetail normal-screen regression paths', () => {
-     test('joins a grade to its real test and class', () => {
-         const rows = buildStudentGradeRows({
-             grades: [{ id: 'grade-1', testId: 'test-1', score: 91 }],
-             testMap: new Map([['test-1', { id: 'test-1', classId: 'class-1', title: '8월 시험' }]]),
-             classMap: new Map([['class-1', { id: 'class-1', name: '중2 수학' }]]),
-             classTestStats: {},
-             getClassId: (record) => String(record.classId || ''),
-             isClosedClass,
-             resolveClassTestStats,
-         });
- 
-         expect(rows).toHaveLength(1);
-         expect(rows[0].classDoc.name).toBe('중2 수학');
-     });
- 
-+    test('keeps a historical grade whose class is closed', () => {
-+        const rows = buildStudentGradeRows({
-+            grades: [{ id: 'grade-closed', testId: 'test-closed', score: 88 }],
-+            testMap: new Map([['test-closed', { id: 'test-closed', classId: 'class-closed', title: '기말고사' }]]),
-+            classMap: new Map([['class-closed', { id: 'class-closed', name: '종강반', status: 'closed', active: false }]]),
-+            classTestStats: {},
-+            getClassId: (record) => String(record.classId || ''),
-+            isClosedClass,
-+            resolveClassTestStats,
-+        });
-+
-+        expect(rows).toHaveLength(1);
-+        expect(rows[0].classDoc.name).toBe('종강반');
-+    });
-+
-+    test('keeps a grade with test metadata when its class document is unavailable', () => {
-+        const rows = buildStudentGradeRows({
-+            grades: [{ id: 'grade-orphan-class', testId: 'test-1', score: 77 }],
-+            testMap: new Map([['test-1', { id: 'test-1', classId: 'missing-class', className: '과거반' }]]),
-+            classMap: new Map(),
-+            classTestStats: {},
-+            getClassId: (record) => String(record.classId || ''),
-+            isClosedClass,
-+            resolveClassTestStats,
-+        });
-+
-+        expect(rows).toHaveLength(1);
-+        expect(rows[0].test.className).toBe('과거반');
-+    });
-+
+@@ -58,56 +58,79 @@ describe('StudentDetail normal-screen regression paths', () => {
      test('uses the real homework assignment title and class relationship', () => {
          const assignment = { id: 'assignment-1', title: '일차방정식', classId: 'class-1', questionNumbers: [1] };
          const rows = buildStudentHomeworkRows({
@@ -214,95 +17,104 @@ index 60873edbb0496872f0ac743d3fb0f9dbcc94ee34..6497d9ca307382620d713d50166e30c6
          expect(classMap.get(rows[0].classId).name).toBe('중2 수학');
      });
  
-+    test('assignment metadata wins over empty or legacy result metadata', () => {
-+        const rows = buildStudentHomeworkRows({
-+            homeworkResults: [{ id: 'result-1', assignmentId: 'assignment-1', title: '', classId: '', classDocId: 'legacy-class', results: { 1: '맞음' } }],
-+            assignmentMap: new Map([['assignment-1', { id: 'assignment-1', title: '실제 과제명', classId: 'real-class', questionNumbers: [1] }]]),
-+            studentId: 'student-1',
-+        });
-+
-+        expect(rows[0]).toMatchObject({ id: 'result-1', assignmentTitle: '실제 과제명', classId: 'real-class' });
-+        expect(rows[0].results).toEqual({ 1: '맞음' });
-+    });
-+
-     test('the screen page/load-more path renders 9 clinics as 4, 8, then 9', async () => {
-         const records = Array.from({ length: 9 }, (_, index) => ({ id: `clinic-${index + 1}`, date: `2026-08-${String(9 - index).padStart(2, '0')}` }));
-         const fetchPair = jest.fn(({ cursor }) => {
-             const start = cursor ?? 0;
-             const docs = records.slice(start, start + 4);
-             return Promise.resolve({ docs, cursor: start + docs.length, hasMore: docs.length === 4 });
+     test('assignment metadata wins over empty or legacy result metadata', () => {
+         const rows = buildStudentHomeworkRows({
+             homeworkResults: [{ id: 'result-1', assignmentId: 'assignment-1', title: '', classId: '', classDocId: 'legacy-class', results: { 1: '맞음' } }],
+             assignmentMap: new Map([['assignment-1', { id: 'assignment-1', title: '실제 과제명', classId: 'real-class', questionNumbers: [1] }]]),
+             studentId: 'student-1',
          });
+ 
+         expect(rows[0]).toMatchObject({ id: 'result-1', assignmentTitle: '실제 과제명', classId: 'real-class' });
+         expect(rows[0].results).toEqual({ 1: '맞음' });
+     });
+ 
+-    test('the screen page/load-more path renders 9 clinics as 4, 8, then 9', async () => {
+-        const records = Array.from({ length: 9 }, (_, index) => ({ id: `clinic-${index + 1}`, date: `2026-08-${String(9 - index).padStart(2, '0')}` }));
+-        const fetchPair = jest.fn(({ cursor }) => {
+-            const start = cursor ?? 0;
+-            const docs = records.slice(start, start + 4);
+-            return Promise.resolve({ docs, cursor: start + docs.length, hasMore: docs.length === 4 });
+-        });
++    test('pages mixed current and legacy clinic schemas without requiring date', async () => {
++        const recordsByIdentity = {
++            'studentId:student-doc': [
++                { id: 'current-1', studentId: 'student-doc', date: '2026-08-09' },
++                { id: 'current-2', studentId: 'student-doc', date: '2026-08-08' },
++                { id: 'legacy-clinic-date', studentId: 'student-doc', clinicDate: '2026-08-07' },
++            ],
++            'authUid:student-auth': [
++                { id: 'legacy-created-at', authUid: 'student-auth', createdAt: '2026-08-06' },
++                { id: 'legacy-no-date', authUid: 'student-auth' },
++            ],
++            'userUid:student-auth': [
++                { id: 'legacy-user-uid', userUid: 'student-auth', clinicDate: '2026-08-05' },
++                { id: 'current-1', userUid: 'student-auth', date: '2026-08-09' },
++            ],
++        };
++        const fetchPair = jest.fn(({ field, value }) => Promise.resolve({
++            docs: recordsByIdentity[`${field}:${value}`] || [], cursor: null, hasMore: false,
++        }));
          const mergeRows = (groups) => [...new Map(groups.flat().map((row) => [row.id, row])).values()];
-         const sortRows = (rows) => [...rows].sort((a, b) => b.date.localeCompare(a.date));
+-        const sortRows = (rows) => [...rows].sort((a, b) => b.date.localeCompare(a.date));
++        const effectiveDate = (row) => row.date || row.clinicDate || row.createdAt || '';
++        const sortRows = (rows) => [...rows].sort((a, b) => effectiveDate(b).localeCompare(effectiveDate(a)));
          let cursors = {};
          let rendered = [];
  
-         for (const expectedCount of [4, 8, 9]) {
+-        for (const expectedCount of [4, 8, 9]) {
++        for (const expectedCount of [4, 6]) {
              const page = await fetchStudentPageCore({
-                 pairs: [['studentId', 'student-1']], cursors, pageSize: 4, fetchPair, mergeRows, sortRows,
+-                pairs: [['studentId', 'student-1']], cursors, pageSize: 4, fetchPair, mergeRows, sortRows,
++                pairs: [
++                    ['studentId', 'student-doc'],
++                    ['authUid', 'student-auth'],
++                    ['userUid', 'student-auth'],
++                ],
++                cursors, pageSize: 4, fetchPair, mergeRows, sortRows,
              });
              rendered = mergeRows([rendered, page.rows]);
              cursors = page.cursors;
              expect(rendered).toHaveLength(expectedCount);
-             if (expectedCount === 9) expect(page.hasMore).toBe(false);
+-            if (expectedCount === 9) expect(page.hasMore).toBe(false);
++            if (expectedCount === 6) expect(page.hasMore).toBe(false);
          }
++
++        expect(fetchPair).toHaveBeenCalledTimes(3);
++        expect(rendered.map((row) => row.id)).toEqual(expect.arrayContaining([
++            'current-1', 'current-2', 'legacy-clinic-date', 'legacy-created-at', 'legacy-no-date', 'legacy-user-uid',
++        ]));
      });
-+
-+    test('the clinic table renders every row already present in screen state', () => {
-+        const rows = Array.from({ length: 8 }, (_, index) => ({ id: `clinic-${index + 1}`, label: `클리닉 ${index + 1}` }));
-+        render(<DataTable rows={rows} emptyText="없음" columns={[{ key: 'label', label: '클리닉' }]} />);
-+
-+        expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(9);
-+        rows.forEach((row) => expect(screen.getByText(row.label)).toBeInTheDocument());
-+    });
+ 
+     test('the clinic table renders every row already present in screen state', () => {
+         const rows = Array.from({ length: 8 }, (_, index) => ({ id: `clinic-${index + 1}`, label: `클리닉 ${index + 1}` }));
+         render(<DataTable rows={rows} emptyText="없음" columns={[{ key: 'label', label: '클리닉' }]} />);
+ 
+         expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(9);
+         rows.forEach((row) => expect(screen.getByText(row.label)).toBeInTheDocument());
+     });
  });
 diff --git a/src/pages/StudentDetail.jsx b/src/pages/StudentDetail.jsx
-index b6429406aa96649f15661c22a47784b13de57dd5..a74c28d6eb4b9f99a36efbabd94bcb3ca493546a 100644
+index a74c28d6eb4b9f99a36efbabd94bcb3ca493546a..d2fab341cf3ffb5a91f61960b4cbe28c52f5c517 100644
 --- a/src/pages/StudentDetail.jsx
 +++ b/src/pages/StudentDetail.jsx
-@@ -130,55 +130,66 @@ const studentQueryPairs = (student, fields) => {
-     const pairs = fields.flatMap(([field, valueKeys]) => valueKeys.map((key) => [field, values[key]]));
-     const seen = new Set();
-     return pairs.filter(([field, value]) => {
-         if (!value) return false;
-         const key = `${field}:${value}`;
-         if (seen.has(key)) return false;
-         seen.add(key);
-         return true;
-     });
- };
- 
- export const fetchStudentPage = async (collectionName, student, fields, cursors = {}) => {
-     const pairs = studentQueryPairs(student, fields);
-     return fetchStudentPageCore({
-         pairs, cursors, pageSize: PAGE_SIZE, mergeRows: mergeById,
-         sortRows: (rows) => sortNewest(rows, ['date']),
-         fetchPair: async ({ field, value, cursor }) => {
-         const constraints = [
-             where(field, '==', value),
-             orderBy('date', 'desc'),
-             ...(cursor ? [startAfter(cursor)] : []),
-             limit(PAGE_SIZE),
-         ];
-         try {
+@@ -154,61 +154,93 @@ export const fetchStudentPage = async (collectionName, student, fields, cursors
              const snapshot = await getDocs(query(collection(db, collectionName), ...constraints));
--            return {
-+            const result = {
+             const result = {
                  docs: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
                  cursor: snapshot.docs.at(-1) || null,
                  hasMore: snapshot.size === PAGE_SIZE,
              };
-+            if (process.env.NODE_ENV !== 'production' && collectionName === COLLECTIONS.clinic) {
-+                console.log('[studentDetail][clinic:query]', {
-+                    field,
-+                    value,
-+                    previousCursorId: cursor?.id || null,
-+                    returnedIds: result.docs.map((item) => item.id),
-+                    nextCursorId: result.cursor?.id || null,
-+                    hasMore: result.hasMore,
-+                });
-+            }
-+            return result;
+             if (process.env.NODE_ENV !== 'production' && collectionName === COLLECTIONS.clinic) {
+                 console.log('[studentDetail][clinic:query]', {
+                     field,
+                     value,
+                     previousCursorId: cursor?.id || null,
+                     returnedIds: result.docs.map((item) => item.id),
+                     nextCursorId: result.cursor?.id || null,
+                     hasMore: result.hasMore,
+                 });
+             }
+             return result;
          } catch (pageError) {
              console.warn(`[StudentDetail] ${collectionName} fallback query skipped`, { field, pageError });
              return { docs: [], cursor: null, hasMore: false };
@@ -311,194 +123,150 @@ index b6429406aa96649f15661c22a47784b13de57dd5..a74c28d6eb4b9f99a36efbabd94bcb3c
      });
  };
  
++export const CLINIC_FIELDS = [
++    ['studentId', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
++    ['studentDocId', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
++    ['studentUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
++    ['authUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
++    ['uid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
++    ['userUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
++];
++
++// clinicLogs에는 date가 생기기 전의 문서도 남아 있다. Firestore의 orderBy는 해당
++// 필드가 없는 문서를 제외하므로, 일반 학생 상세의 클리닉 목록만 식별자별 전체를
++// 한 번 읽고 effective date를 클라이언트에서 정렬한 뒤 화면 단위로 나눈다.
++export const fetchStudentClinicPage = async (student, cursors = {}) => {
++    const pairs = studentQueryPairs(student, CLINIC_FIELDS);
++    return fetchStudentPageCore({
++        pairs, cursors, pageSize: PAGE_SIZE, mergeRows: mergeById,
++        sortRows: (rows) => sortNewest(rows, ['date', 'clinicDate', 'createdAt']),
++        fetchPair: async ({ field, value }) => {
++            const snapshot = await getDocs(query(
++                collection(db, COLLECTIONS.clinic),
++                where(field, '==', value),
++            ));
++            const docs = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
++            if (process.env.NODE_ENV !== 'production') {
++                console.log('[studentDetail][clinic:query]', {
++                    field,
++                    value,
++                    previousCursorId: null,
++                    returnedIds: docs.map((item) => item.id),
++                    nextCursorId: null,
++                    hasMore: false,
++                });
++            }
++            return { docs, cursor: null, hasMore: false };
++        },
++    });
++};
++
  const ATTENDANCE_FIELDS = [
      ['studentId', ['id']],
      ['studentUid', ['studentUid', 'uid', 'id']],
      ['authUid', ['authUid', 'uid']],
  ];
- const CLINIC_FIELDS = [
-     ['studentId', ['id']],
-     ['studentDocId', ['id']],
-     ['studentUid', ['uid', 'id']],
-     ['authUid', ['authUid', 'uid']],
- ];
+-const CLINIC_FIELDS = [
+-    ['studentId', ['id']],
+-    ['studentDocId', ['id']],
+-    ['studentUid', ['uid', 'id']],
+-    ['authUid', ['authUid', 'uid']],
+-];
  
  const fetchByStudentKeys = async (collectionName, student, count = 300) => {
      const studentKeys = [...new Set([
          student.id,
          student.uid,
          student.authUid,
-@@ -254,51 +265,51 @@ const fetchByClassIds = async (collectionName, classIds, count = 300) => {
-     })));
+         student.studentUid,
+         student.userUid,
+     ].filter(Boolean).map(String))];
+     const fields = ['studentId', 'studentDocId', 'studentUid', 'authUid', 'uid']
+         .flatMap((field) => studentKeys.map((value) => [field, value]));
+     const snapshots = await Promise.all(fields.map(([field, value]) => {
+         const constraints = [where(field, '==', value)];
+         if (count != null) constraints.push(limit(count));
+         return getDocs(query(collection(db, collectionName), ...constraints));
+     }));
      return mergeById(snapshots.map((snapshot) => (
          snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
      )));
  };
  
- const EmptyState = ({ children }) => (
-     <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-10 text-center text-xs text-gray-500">
-         {children}
-     </div>
- );
- 
- const SectionCard = ({ title, description, children, action }) => (
-     <section className="rounded-2xl border border-gray-200 bg-white p-5">
-         <div className="mb-4 flex items-start justify-between gap-4">
-             <div>
-                 <h3 className="text-sm font-bold text-gray-900">{title}</h3>
-                 {description && <p className="mt-1 text-xs text-gray-500">{description}</p>}
-             </div>
-             {action}
-         </div>
-         {children}
-     </section>
- );
- 
--const DataTable = ({ columns, rows, emptyText }) => {
-+export const DataTable = ({ columns, rows, emptyText }) => {
-     if (!rows.length) return <EmptyState>{emptyText}</EmptyState>;
-     return (
-         <div className="overflow-x-auto">
-             <table className="w-full min-w-[760px] text-left text-xs">
-                 <thead>
-                     <tr className="border-b border-gray-200 bg-gray-50 text-gray-500">
-                         {columns.map((column) => (
-                             <th key={column.key} className="px-3 py-2.5 font-semibold">{column.label}</th>
-                         ))}
-                     </tr>
-                 </thead>
-                 <tbody className="divide-y divide-gray-100">
-                     {rows.map((row, rowIndex) => (
-                         <tr key={row.id || rowIndex} className="text-gray-700 hover:bg-gray-50/70">
-                             {columns.map((column) => (
-                                 <td key={column.key} className="px-3 py-3 align-top">
-                                     {column.render ? column.render(row) : (row[column.key] ?? '-')}
-                                 </td>
-                             ))}
-                         </tr>
-                     ))}
-                 </tbody>
-             </table>
-         </div>
-     );
-@@ -417,111 +428,110 @@ export default function StudentDetail() {
-                     fetchByClassIds(COLLECTIONS.homeworkAssignments, [...classIds]),
-                     fetchByIds(COLLECTIONS.homeworkAssignments, assignmentIds),
-                     fetchByIds('classTestStats', statsIds),
-                 ]);
-                 const assignmentRows = mergeById([assignmentRowsByClass, assignmentRowsById]);
- 
-                 if (!mounted) return;
-                 setStudent(loadedStudent);
-                 setClasses(classRows);
-                 setAttendances(attendanceRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
-                 setAttendanceCursors(attendancePage.cursors);
-                 setAttendanceHasMore(attendancePage.hasMore);
-                 const matchedGrades = gradeRows.filter((item) => (
-                     isSameStudentByAnyKey(item, loadedStudent)
-                     && testRows.some((test) => String(resolveGradeTestId(item)) === String(test.id))
-                 ));
-                 const matchedHomework = homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent));
-                 if (process.env.NODE_ENV !== 'production') {
-                     const loadedTestMap = new Map(testRows.map((item) => [String(item.id), item]));
-                     const loadedClassMap = new Map(classRows.map((item) => [String(item.id), item]));
-                     const loadedAssignmentMap = new Map(assignmentRows.map((item) => [String(item.id || item.assignmentId), item]));
-                     const renderedGrades = buildStudentGradeRows({
-                         grades: matchedGrades, testMap: loadedTestMap, classMap: loadedClassMap,
-                         classTestStats: Object.fromEntries(statsRows.map((stats) => [stats.id, stats])),
-                         getClassId, isClosedClass, resolveClassTestStats,
-+                        logger: (details) => console.log('[studentDetail][grade:join]', details),
-                     });
-                     const renderedHomework = buildStudentHomeworkRows({
-                         homeworkResults: matchedHomework, assignmentMap: loadedAssignmentMap, studentId: loadedStudent.id,
-+                        logger: (details) => console.log('[studentDetail][homework:join]', details),
-                     });
-                     const unresolvedAssignmentIds = assignmentIds.filter((id) => !loadedAssignmentMap.has(String(id)));
-                     console.log('[studentDetail][grades]', {
-                         rawGradeCount: gradeRows.length,
-                         matchedGradeCount: matchedGrades.length,
-                         testIds,
-                         loadedTestCount: testRows.length,
-                         renderedGradeCount: renderedGrades.length,
-                     });
-                     console.log('[studentDetail][homework]', {
-                         rawHomeworkResultCount: homeworkRows.length,
-                         matchedHomeworkResultCount: matchedHomework.length,
-                         assignmentIds,
-                         loadedAssignmentCount: assignmentRows.length,
-                         renderedHomeworkCount: renderedHomework.length,
-                         unresolvedAssignmentIds,
-                     });
-                     console.log('[studentDetail][clinic:initial]', {
-                         fetchedClinicCount: clinicPage.rows.length,
-+                        fetchedClinicIds: clinicPage.rows.map((item) => item.id),
-                         renderedClinicCount: clinicRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)).length,
-                         clinicHasMore: clinicPage.hasMore,
-                     });
-                 }
-                 setGrades(matchedGrades);
-                 setHomeworkResults(matchedHomework);
-                 setClinicLogs(clinicRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
-                 setClinicCursors(clinicPage.cursors);
-                 setClinicHasMore(clinicPage.hasMore);
-                 setPayments(paymentRows);
-                 setMaterials(materialRows);
-                 setTests(testRows);
-                 setClassTestStats(Object.fromEntries(statsRows.map((stats) => [stats.id, stats])));
-                 setHomeworkAssignments(assignmentRows);
-             } catch (loadError) {
-                 console.error('[StudentDetail] load failed', loadError);
-                 if (mounted) setError(loadError?.message || '학생 정보를 불러오지 못했습니다.');
-             } finally {
-                 if (mounted) setLoading(false);
-             }
-         };
-         load();
-         return () => { mounted = false; };
-     }, [studentId]);
+ const fetchByIds = async (collectionName, ids) => {
+     const uniqueIds = [...new Set(ids.filter(Boolean).map(String))];
+     const chunks = [];
+     for (let index = 0; index < uniqueIds.length; index += 10) {
+@@ -379,51 +411,51 @@ export default function StudentDetail() {
+         } catch (loadError) {
+             console.error('[StudentDetail] staffTimeline load failed', loadError);
+             setTimelineError('교직원 타임라인을 불러오지 못했습니다.');
+         } finally {
+             setTimelineLoading(false);
+         }
+     }, [student, canUseTimeline]);
  
      useEffect(() => {
-         if (activeTab === 'timeline') loadTimeline();
-     }, [activeTab, loadTimeline]);
+         let mounted = true;
+         const load = async () => {
+             setLoading(true);
+             setError('');
+             try {
+                 const studentSnapshot = await getDoc(doc(db, COLLECTIONS.users, studentId));
+                 if (!studentSnapshot.exists()) throw new Error('학생 정보를 찾을 수 없습니다.');
+                 const loadedStudent = { id: studentSnapshot.id, ...studentSnapshot.data() };
+                 if (loadedStudent.role && loadedStudent.role !== ROLE.STUDENT && loadedStudent.role !== 'student') {
+                     throw new Error('학생 역할의 문서가 아닙니다.');
+                 }
  
-     const classMap = useMemo(() => new Map(classes.map((item) => [String(item.id), item])), [classes]);
-     const testMap = useMemo(() => new Map(tests.map((item) => [String(item.id), item])), [tests]);
--    const activeHomeworkAssignments = useMemo(
--        () => homeworkAssignments.filter((item) => !isClosedClass(classMap.get(getClassId(item)))),
--        [homeworkAssignments, classMap],
--    );
--    const assignmentMap = useMemo(() => new Map(activeHomeworkAssignments.map((item) => [
-+    const assignmentMap = useMemo(() => new Map(homeworkAssignments.map((item) => [
-         String(item.id || item.assignmentId),
-         item,
--    ])), [activeHomeworkAssignments]);
-+    ])), [homeworkAssignments]);
-     const sortedClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
-     const sortedAttendances = useMemo(
-         () => sortNewest(attendances, ['date', 'lessonDate', 'createdAt']),
-         [attendances],
-     );
-     const gradeRows = useMemo(() => buildStudentGradeRows({
-         grades, testMap, classMap, classTestStats, getClassId, isClosedClass, resolveClassTestStats,
-     }), [grades, testMap, classMap, classTestStats]);
-     const sortedGrades = useMemo(
-         () => [...gradeRows].sort((a, b) => (
-             (toDate(b.testDate)?.getTime() || 0) - (toDate(a.testDate)?.getTime() || 0)
-         )),
-         [gradeRows],
-     );
-     const sortedClinics = useMemo(
-         () => sortNewest(clinicLogs, ['date', 'clinicDate', 'createdAt']),
-         [clinicLogs],
-     );
+                 const [attendancePage, gradeRows, homeworkRows, clinicPage, paymentRows, materialRows] = await Promise.all([
+                     fetchStudentPage(COLLECTIONS.attendance, loadedStudent, ATTENDANCE_FIELDS),
+                     fetchStudentRecords(COLLECTIONS.grades, loadedStudent),
+                     fetchStudentRecords(COLLECTIONS.homeworkResults, loadedStudent),
+-                    fetchStudentPage(COLLECTIONS.clinic, loadedStudent, CLINIC_FIELDS),
++                    fetchStudentClinicPage(loadedStudent),
+                     fetchByStudentKeys(COLLECTIONS.payments, loadedStudent).catch(() => []),
+                     fetchByStudentKeys(COLLECTIONS.materials, loadedStudent).catch(() => []),
+                 ]);
+                 const attendanceRows = attendancePage.rows;
+                 const clinicRows = clinicPage.rows;
  
-     const attendanceSummary = useMemo(() => {
-         const presentCount = sortedAttendances.filter((item) => isPresent(firstValue(item, ['status', 'attendanceStatus']))).length;
-         const videoCount = sortedAttendances.filter((item) => isVideoMakeup(firstValue(item, ['status', 'attendanceStatus']))).length;
-         const absentCount = sortedAttendances.filter((item) => isAbsent(firstValue(item, ['status', 'attendanceStatus']))).length;
-         const lateCount = sortedAttendances.filter((item) => isLate(firstValue(item, ['status', 'attendanceStatus']))).length;
-         return {
-@@ -556,52 +566,55 @@ export default function StudentDetail() {
+                 const classIds = new Set(getStudentClassIds(loadedStudent));
+                 [...attendanceRows, ...gradeRows, ...homeworkRows, ...clinicRows].forEach((item) => {
+                     const classId = getClassId(item);
+                     if (classId) classIds.add(classId);
+                 });
+                 const testIds = gradeRows.map(resolveGradeTestId).filter(Boolean);
+                 const assignmentIds = homeworkRows.map(resolveHomeworkAssignmentId).filter(Boolean);
+                 const testRows = await fetchByIds(COLLECTIONS.tests, testIds);
+                 testRows.forEach((test) => {
+                     const classId = getClassId(test);
+                     if (classId) classIds.add(classId);
+                 });
+                 const statsIds = testRows
+                     .filter((test) => test.id && getClassId(test))
+                     .map((test) => `${getClassId(test)}_${test.id}`);
+                 const [classRows, assignmentRowsByClass, assignmentRowsById, statsRows] = await Promise.all([
+                     fetchByIds(COLLECTIONS.classes, [...classIds]),
+                     fetchByClassIds(COLLECTIONS.homeworkAssignments, [...classIds]),
+                     fetchByIds(COLLECTIONS.homeworkAssignments, assignmentIds),
+@@ -550,56 +582,53 @@ export default function StudentDetail() {
+     const latestClinic = sortedClinics[0];
+     const clinicMinutes = useMemo(() => clinicLogs.reduce((total, item) => {
+         const direct = Number(firstValue(item, ['durationMinutes', 'minutes'], 0));
+         if (Number.isFinite(direct) && direct > 0) return total + direct;
+         const start = toDate(firstValue(item, ['checkIn', 'startAt']));
+         const end = toDate(firstValue(item, ['checkOut', 'endAt']));
+         return start && end ? total + Math.max(0, Math.round((end - start) / 60000)) : total;
+     }, 0), [clinicLogs]);
+ 
+     const homeworkRows = useMemo(() => sortNewest(buildStudentHomeworkRows({
+         homeworkResults, assignmentMap, studentId: student?.id,
+     }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, assignmentMap, student?.id]);
+ 
+     const actor = useMemo(() => ({
+         uid: profileDocId || user?.uid || '',
+         name: userProfile?.displayName || user?.displayName || user?.email || '교직원',
          role,
      }), [profileDocId, user, userProfile, role]);
  
@@ -508,12 +276,15 @@ index b6429406aa96649f15661c22a47784b13de57dd5..a74c28d6eb4b9f99a36efbabd94bcb3c
          const setMoreLoading = isAttendance ? setAttendanceMoreLoading : setClinicMoreLoading;
          setMoreLoading(true);
          try {
-             const page = await fetchStudentPage(
-                 isAttendance ? COLLECTIONS.attendance : COLLECTIONS.clinic,
-                 student,
-                 isAttendance ? ATTENDANCE_FIELDS : CLINIC_FIELDS,
-                 isAttendance ? attendanceCursors : clinicCursors,
-             );
+-            const page = await fetchStudentPage(
+-                isAttendance ? COLLECTIONS.attendance : COLLECTIONS.clinic,
+-                student,
+-                isAttendance ? ATTENDANCE_FIELDS : CLINIC_FIELDS,
+-                isAttendance ? attendanceCursors : clinicCursors,
+-            );
++            const page = isAttendance
++                ? await fetchStudentPage(COLLECTIONS.attendance, student, ATTENDANCE_FIELDS, attendanceCursors)
++                : await fetchStudentClinicPage(student, clinicCursors);
              if (isAttendance) {
                  setAttendances((current) => sortNewest(mergeById([current, page.rows]), ['date']));
                  setAttendanceCursors(page.cursors);
@@ -524,11 +295,11 @@ index b6429406aa96649f15661c22a47784b13de57dd5..a74c28d6eb4b9f99a36efbabd94bcb3c
                      if (process.env.NODE_ENV !== 'production') {
                          console.log('[studentDetail][clinic:more]', {
                              previousClinicCount: current.length,
-+                            previousClinicIds: current.map((item) => item.id),
+                             previousClinicIds: current.map((item) => item.id),
                              fetchedNextCount: page.rows.length,
-+                            fetchedNextIds: page.rows.map((item) => item.id),
+                             fetchedNextIds: page.rows.map((item) => item.id),
                              mergedClinicCount: merged.length,
-+                            mergedClinicIds: merged.map((item) => item.id),
+                             mergedClinicIds: merged.map((item) => item.id),
                              clinicHasMore: page.hasMore,
                          });
                      }
@@ -539,18 +310,3 @@ index b6429406aa96649f15661c22a47784b13de57dd5..a74c28d6eb4b9f99a36efbabd94bcb3c
              }
          } catch (loadError) {
              console.error(`[StudentDetail] ${type} pagination failed`, loadError);
-         } finally {
-             setMoreLoading(false);
-         }
-     };
- 
-     const handleCreateTimeline = async () => {
-         const content = timelineDraft.trim();
-         if (!content || !student) return;
-         setTimelineSaving(true);
-         setTimelineError('');
-         try {
-             await createStaffTimelineThread(db, {
-                 sourceType: 'studentMemo',
-                 sourceDocId: student.id,
-                 sourceCollection: COLLECTIONS.users,

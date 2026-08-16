@@ -80,27 +80,50 @@ describe('StudentDetail normal-screen regression paths', () => {
         expect(rows[0].results).toEqual({ 1: '맞음' });
     });
 
-    test('the screen page/load-more path renders 9 clinics as 4, 8, then 9', async () => {
-        const records = Array.from({ length: 9 }, (_, index) => ({ id: `clinic-${index + 1}`, date: `2026-08-${String(9 - index).padStart(2, '0')}` }));
-        const fetchPair = jest.fn(({ cursor }) => {
-            const start = cursor ?? 0;
-            const docs = records.slice(start, start + 4);
-            return Promise.resolve({ docs, cursor: start + docs.length, hasMore: docs.length === 4 });
-        });
+    test('pages mixed current and legacy clinic schemas without requiring date', async () => {
+        const recordsByIdentity = {
+            'studentId:student-doc': [
+                { id: 'current-1', studentId: 'student-doc', date: '2026-08-09' },
+                { id: 'current-2', studentId: 'student-doc', date: '2026-08-08' },
+                { id: 'legacy-clinic-date', studentId: 'student-doc', clinicDate: '2026-08-07' },
+            ],
+            'authUid:student-auth': [
+                { id: 'legacy-created-at', authUid: 'student-auth', createdAt: '2026-08-06' },
+                { id: 'legacy-no-date', authUid: 'student-auth' },
+            ],
+            'userUid:student-auth': [
+                { id: 'legacy-user-uid', userUid: 'student-auth', clinicDate: '2026-08-05' },
+                { id: 'current-1', userUid: 'student-auth', date: '2026-08-09' },
+            ],
+        };
+        const fetchPair = jest.fn(({ field, value }) => Promise.resolve({
+            docs: recordsByIdentity[`${field}:${value}`] || [], cursor: null, hasMore: false,
+        }));
         const mergeRows = (groups) => [...new Map(groups.flat().map((row) => [row.id, row])).values()];
-        const sortRows = (rows) => [...rows].sort((a, b) => b.date.localeCompare(a.date));
+        const effectiveDate = (row) => row.date || row.clinicDate || row.createdAt || '';
+        const sortRows = (rows) => [...rows].sort((a, b) => effectiveDate(b).localeCompare(effectiveDate(a)));
         let cursors = {};
         let rendered = [];
 
-        for (const expectedCount of [4, 8, 9]) {
+        for (const expectedCount of [4, 6]) {
             const page = await fetchStudentPageCore({
-                pairs: [['studentId', 'student-1']], cursors, pageSize: 4, fetchPair, mergeRows, sortRows,
+                pairs: [
+                    ['studentId', 'student-doc'],
+                    ['authUid', 'student-auth'],
+                    ['userUid', 'student-auth'],
+                ],
+                cursors, pageSize: 4, fetchPair, mergeRows, sortRows,
             });
             rendered = mergeRows([rendered, page.rows]);
             cursors = page.cursors;
             expect(rendered).toHaveLength(expectedCount);
-            if (expectedCount === 9) expect(page.hasMore).toBe(false);
+            if (expectedCount === 6) expect(page.hasMore).toBe(false);
         }
+
+        expect(fetchPair).toHaveBeenCalledTimes(3);
+        expect(rendered.map((row) => row.id)).toEqual(expect.arrayContaining([
+            'current-1', 'current-2', 'legacy-clinic-date', 'legacy-created-at', 'legacy-no-date', 'legacy-user-uid',
+        ]));
     });
 
     test('the clinic table renders every row already present in screen state', () => {

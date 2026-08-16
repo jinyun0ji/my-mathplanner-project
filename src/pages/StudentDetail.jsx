@@ -176,15 +176,47 @@ export const fetchStudentPage = async (collectionName, student, fields, cursors 
     });
 };
 
+export const CLINIC_FIELDS = [
+    ['studentId', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+    ['studentDocId', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+    ['studentUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+    ['authUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+    ['uid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+    ['userUid', ['id', 'studentUid', 'uid', 'authUid', 'userUid']],
+];
+
+// clinicLogs에는 date가 생기기 전의 문서도 남아 있다. Firestore의 orderBy는 해당
+// 필드가 없는 문서를 제외하므로, 일반 학생 상세의 클리닉 목록만 식별자별 전체를
+// 한 번 읽고 effective date를 클라이언트에서 정렬한 뒤 화면 단위로 나눈다.
+export const fetchStudentClinicPage = async (student, cursors = {}) => {
+    const pairs = studentQueryPairs(student, CLINIC_FIELDS);
+    return fetchStudentPageCore({
+        pairs, cursors, pageSize: PAGE_SIZE, mergeRows: mergeById,
+        sortRows: (rows) => sortNewest(rows, ['date', 'clinicDate', 'createdAt']),
+        fetchPair: async ({ field, value }) => {
+            const snapshot = await getDocs(query(
+                collection(db, COLLECTIONS.clinic),
+                where(field, '==', value),
+            ));
+            const docs = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+            if (process.env.NODE_ENV !== 'production') {
+                console.log('[studentDetail][clinic:query]', {
+                    field,
+                    value,
+                    previousCursorId: null,
+                    returnedIds: docs.map((item) => item.id),
+                    nextCursorId: null,
+                    hasMore: false,
+                });
+            }
+            return { docs, cursor: null, hasMore: false };
+        },
+    });
+};
+
 const ATTENDANCE_FIELDS = [
     ['studentId', ['id']],
     ['studentUid', ['studentUid', 'uid', 'id']],
-    ['authUid', ['authUid', 'uid']],
-];
-const CLINIC_FIELDS = [
-    ['studentId', ['id']],
-    ['studentDocId', ['id']],
-    ['studentUid', ['uid', 'id']],
     ['authUid', ['authUid', 'uid']],
 ];
 
@@ -401,7 +433,7 @@ export default function StudentDetail() {
                     fetchStudentPage(COLLECTIONS.attendance, loadedStudent, ATTENDANCE_FIELDS),
                     fetchStudentRecords(COLLECTIONS.grades, loadedStudent),
                     fetchStudentRecords(COLLECTIONS.homeworkResults, loadedStudent),
-                    fetchStudentPage(COLLECTIONS.clinic, loadedStudent, CLINIC_FIELDS),
+                    fetchStudentClinicPage(loadedStudent),
                     fetchByStudentKeys(COLLECTIONS.payments, loadedStudent).catch(() => []),
                     fetchByStudentKeys(COLLECTIONS.materials, loadedStudent).catch(() => []),
                 ]);
@@ -572,12 +604,9 @@ export default function StudentDetail() {
         const setMoreLoading = isAttendance ? setAttendanceMoreLoading : setClinicMoreLoading;
         setMoreLoading(true);
         try {
-            const page = await fetchStudentPage(
-                isAttendance ? COLLECTIONS.attendance : COLLECTIONS.clinic,
-                student,
-                isAttendance ? ATTENDANCE_FIELDS : CLINIC_FIELDS,
-                isAttendance ? attendanceCursors : clinicCursors,
-            );
+            const page = isAttendance
+                ? await fetchStudentPage(COLLECTIONS.attendance, student, ATTENDANCE_FIELDS, attendanceCursors)
+                : await fetchStudentClinicPage(student, clinicCursors);
             if (isAttendance) {
                 setAttendances((current) => sortNewest(mergeById([current, page.rows]), ['date']));
                 setAttendanceCursors(page.cursors);
