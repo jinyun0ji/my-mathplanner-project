@@ -32,12 +32,7 @@ import {
 import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
 import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
 import { formatScoreStat } from '../utils/scoreDisplay';
-import {
-    buildGradeRowsForScreen,
-    buildHomeworkRowsForScreen,
-    collectStudentPage,
-    getStudentIdentityKeys,
-} from '../domain/studentDetail/studentDetail.service';
+import { buildStudentGradeRows, buildStudentHomeworkRows, fetchStudentPageCore } from '../domain/studentDetail/studentDetailScreen.logic';
 
 const COLLECTIONS = {
     users: 'users',
@@ -125,7 +120,13 @@ const mergeById = (groups) => {
 
 const PAGE_SIZE = 4;
 const studentQueryPairs = (student, fields) => {
-    const values = { ...student, id: student?.id };
+    const values = {
+        id: student?.id,
+        uid: student?.uid,
+        authUid: student?.authUid,
+        studentUid: student?.studentUid,
+        userUid: student?.userUid,
+    };
     const pairs = fields.flatMap(([field, valueKeys]) => valueKeys.map((key) => [field, values[key]]));
     const seen = new Set();
     return pairs.filter(([field, value]) => {
@@ -137,51 +138,53 @@ const studentQueryPairs = (student, fields) => {
     });
 };
 
-const fetchStudentPage = async (collectionName, student, fields, cursors = {}) => {
+export const fetchStudentPage = async (collectionName, student, fields, cursors = {}) => {
     const pairs = studentQueryPairs(student, fields);
-    return collectStudentPage({
-        pairs,
-        cursors,
-        pageSize: PAGE_SIZE,
-        sortRows: (rows) => sortNewest(rows, ['date', 'clinicDate', 'lessonDate', 'createdAt']),
+    return fetchStudentPageCore({
+        pairs, cursors, pageSize: PAGE_SIZE, mergeRows: mergeById,
+        sortRows: (rows) => sortNewest(rows, ['date']),
         fetchPair: async ({ field, value, cursor }) => {
-            const constraints = [
-                where(field, '==', value),
-                orderBy('date', 'desc'),
-                ...(cursor ? [startAfter(cursor)] : []),
-                limit(PAGE_SIZE),
-            ];
-            try {
-                const snapshot = await getDocs(query(collection(db, collectionName), ...constraints));
-                return {
-                    rows: snapshot.docs.map((item) => ({ ...item.data(), id: item.id })),
-                    cursor: snapshot.docs.at(-1) || null,
-                    hasMore: snapshot.size === PAGE_SIZE,
-                };
-            } catch (pageError) {
-                console.warn(`[StudentDetail] ${collectionName} fallback query skipped`, { field, pageError });
-                return { rows: [], cursor: null, hasMore: false };
-            }
+        const constraints = [
+            where(field, '==', value),
+            orderBy('date', 'desc'),
+            ...(cursor ? [startAfter(cursor)] : []),
+            limit(PAGE_SIZE),
+        ];
+        try {
+            const snapshot = await getDocs(query(collection(db, collectionName), ...constraints));
+            return {
+                docs: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
+                cursor: snapshot.docs.at(-1) || null,
+                hasMore: snapshot.size === PAGE_SIZE,
+            };
+        } catch (pageError) {
+            console.warn(`[StudentDetail] ${collectionName} fallback query skipped`, { field, pageError });
+            return { docs: [], cursor: null, hasMore: false };
+        }
         },
     });
 };
 
 const ATTENDANCE_FIELDS = [
-    ['studentId', ['id', 'docId', 'userDocId']],
-    ['studentUid', ['studentUid', 'userUid', 'uid', 'studentAuthUid', 'id']],
-    ['authUid', ['authUid', 'studentAuthUid', 'userUid', 'uid']],
-    ['uid', ['uid', 'userUid', 'authUid', 'studentAuthUid']],
+    ['studentId', ['id']],
+    ['studentUid', ['studentUid', 'uid', 'id']],
+    ['authUid', ['authUid', 'uid']],
 ];
 const CLINIC_FIELDS = [
-    ['studentId', ['id', 'docId', 'userDocId']],
-    ['studentDocId', ['id', 'docId', 'userDocId']],
-    ['studentUid', ['studentUid', 'userUid', 'uid', 'studentAuthUid', 'id']],
-    ['authUid', ['authUid', 'studentAuthUid', 'userUid', 'uid']],
-    ['uid', ['uid', 'userUid', 'authUid', 'studentAuthUid']],
+    ['studentId', ['id']],
+    ['studentDocId', ['id']],
+    ['studentUid', ['uid', 'id']],
+    ['authUid', ['authUid', 'uid']],
 ];
 
 const fetchByStudentKeys = async (collectionName, student, count = 300) => {
-    const studentKeys = getStudentIdentityKeys(student);
+    const studentKeys = [...new Set([
+        student.id,
+        student.uid,
+        student.authUid,
+        student.studentUid,
+        student.userUid,
+    ].filter(Boolean).map(String))];
     const fields = ['studentId', 'studentDocId', 'studentUid', 'authUid', 'uid']
         .flatMap((field) => studentKeys.map((value) => [field, value]));
     const snapshots = await Promise.all(fields.map(([field, value]) => {
@@ -210,7 +213,13 @@ const fetchByIds = async (collectionName, ids) => {
 };
 
 const fetchStudentRecords = async (collectionName, student, count = 300) => {
-    const keys = getStudentIdentityKeys(student);
+    const keys = [...new Set([
+        student?.id,
+        student?.authUid,
+        student?.uid,
+        student?.studentUid,
+        student?.userUid,
+    ].filter(Boolean).map(String))];
     const [queried, directSnapshots] = await Promise.all([
         fetchByStudentKeys(collectionName, student, count),
         Promise.all(keys.map((key) => getDoc(doc(db, collectionName, key)).catch(() => null))),
@@ -247,11 +256,6 @@ const fetchByClassIds = async (collectionName, classIds, count = 300) => {
         snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))
     )));
 };
-
-const fetchStudentRecordsForScreen = (collectionName, student) => fetchStudentRecords(collectionName, student, 300);
-const fetchStudentRecordsForPrint = (collectionName, student) => fetchStudentRecords(collectionName, student, null);
-const fetchByStudentKeysForPrint = (collectionName, student) => fetchByStudentKeys(collectionName, student, null);
-const fetchByClassIdsForPrint = (collectionName, classIds) => fetchByClassIds(collectionName, classIds, null);
 
 const EmptyState = ({ children }) => (
     <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-10 text-center text-xs text-gray-500">
@@ -377,15 +381,15 @@ export default function StudentDetail() {
             try {
                 const studentSnapshot = await getDoc(doc(db, COLLECTIONS.users, studentId));
                 if (!studentSnapshot.exists()) throw new Error('학생 정보를 찾을 수 없습니다.');
-                const loadedStudent = { ...studentSnapshot.data(), id: studentSnapshot.id, docId: studentSnapshot.id };
+                const loadedStudent = { id: studentSnapshot.id, ...studentSnapshot.data() };
                 if (loadedStudent.role && loadedStudent.role !== ROLE.STUDENT && loadedStudent.role !== 'student') {
                     throw new Error('학생 역할의 문서가 아닙니다.');
                 }
 
                 const [attendancePage, gradeRows, homeworkRows, clinicPage, paymentRows, materialRows] = await Promise.all([
                     fetchStudentPage(COLLECTIONS.attendance, loadedStudent, ATTENDANCE_FIELDS),
-                    fetchStudentRecordsForScreen(COLLECTIONS.grades, loadedStudent),
-                    fetchStudentRecordsForScreen(COLLECTIONS.homeworkResults, loadedStudent),
+                    fetchStudentRecords(COLLECTIONS.grades, loadedStudent),
+                    fetchStudentRecords(COLLECTIONS.homeworkResults, loadedStudent),
                     fetchStudentPage(COLLECTIONS.clinic, loadedStudent, CLINIC_FIELDS),
                     fetchByStudentKeys(COLLECTIONS.payments, loadedStudent).catch(() => []),
                     fetchByStudentKeys(COLLECTIONS.materials, loadedStudent).catch(() => []),
@@ -422,27 +426,43 @@ export default function StudentDetail() {
                 setAttendances(attendanceRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)));
                 setAttendanceCursors(attendancePage.cursors);
                 setAttendanceHasMore(attendancePage.hasMore);
-                const matchedGrades = gradeRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent));
+                const matchedGrades = gradeRows.filter((item) => (
+                    isSameStudentByAnyKey(item, loadedStudent)
+                    && testRows.some((test) => String(resolveGradeTestId(item)) === String(test.id))
+                ));
                 const matchedHomework = homeworkRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent));
                 if (process.env.NODE_ENV !== 'production') {
-                    matchedGrades.forEach((grade) => {
-                        const testId = resolveGradeTestId(grade);
-                        const test = testRows.find((item) => String(item.id) === String(testId));
-                        const classDoc = classRows.find((item) => String(item.id) === String(getClassId(test)));
-                        console.log('[studentDetail][grade]', {
-                            gradeId: grade.id,
-                            testId,
-                            resolvedClassName: resolveGradeDisplay({ grade, test, classDoc }).className,
-                        });
+                    const loadedTestMap = new Map(testRows.map((item) => [String(item.id), item]));
+                    const loadedClassMap = new Map(classRows.map((item) => [String(item.id), item]));
+                    const loadedAssignmentMap = new Map(assignmentRows.map((item) => [String(item.id || item.assignmentId), item]));
+                    const renderedGrades = buildStudentGradeRows({
+                        grades: matchedGrades, testMap: loadedTestMap, classMap: loadedClassMap,
+                        classTestStats: Object.fromEntries(statsRows.map((stats) => [stats.id, stats])),
+                        getClassId, isClosedClass, resolveClassTestStats,
                     });
-                    matchedHomework.forEach((result) => {
-                        const assignmentId = resolveHomeworkAssignmentId(result);
-                        const assignment = assignmentRows.find((item) => String(item.id) === String(assignmentId));
-                        console.log('[studentDetail][homework]', {
-                            resultId: result.id,
-                            assignmentId,
-                            resolvedAssignmentTitle: resolveHomeworkAssignmentTitle(assignment),
-                        });
+                    const renderedHomework = buildStudentHomeworkRows({
+                        homeworkResults: matchedHomework, assignmentMap: loadedAssignmentMap, studentId: loadedStudent.id,
+                    });
+                    const unresolvedAssignmentIds = assignmentIds.filter((id) => !loadedAssignmentMap.has(String(id)));
+                    console.log('[studentDetail][grades]', {
+                        rawGradeCount: gradeRows.length,
+                        matchedGradeCount: matchedGrades.length,
+                        testIds,
+                        loadedTestCount: testRows.length,
+                        renderedGradeCount: renderedGrades.length,
+                    });
+                    console.log('[studentDetail][homework]', {
+                        rawHomeworkResultCount: homeworkRows.length,
+                        matchedHomeworkResultCount: matchedHomework.length,
+                        assignmentIds,
+                        loadedAssignmentCount: assignmentRows.length,
+                        renderedHomeworkCount: renderedHomework.length,
+                        unresolvedAssignmentIds,
+                    });
+                    console.log('[studentDetail][clinic:initial]', {
+                        fetchedClinicCount: clinicPage.rows.length,
+                        renderedClinicCount: clinicRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)).length,
+                        clinicHasMore: clinicPage.hasMore,
                     });
                 }
                 setGrades(matchedGrades);
@@ -471,25 +491,23 @@ export default function StudentDetail() {
     }, [activeTab, loadTimeline]);
 
     const classMap = useMemo(() => new Map(classes.map((item) => [String(item.id), item])), [classes]);
+    const testMap = useMemo(() => new Map(tests.map((item) => [String(item.id), item])), [tests]);
     const activeHomeworkAssignments = useMemo(
         () => homeworkAssignments.filter((item) => !isClosedClass(classMap.get(getClassId(item)))),
         [homeworkAssignments, classMap],
     );
+    const assignmentMap = useMemo(() => new Map(activeHomeworkAssignments.map((item) => [
+        String(item.id || item.assignmentId),
+        item,
+    ])), [activeHomeworkAssignments]);
     const sortedClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
     const sortedAttendances = useMemo(
         () => sortNewest(attendances, ['date', 'lessonDate', 'createdAt']),
         [attendances],
     );
-    const gradeRows = useMemo(() => buildGradeRowsForScreen({
-        grades,
-        tests,
-        classes,
-        resolveStats: (test) => {
-            const classDoc = classMap.get(getClassId(test));
-            if (!classDoc || classDoc.active === false || isClosedClass(classDoc)) return null;
-            return resolveClassTestStats(test, classTestStats);
-        },
-    }).filter((row) => row.classDoc && row.classDoc.active !== false && !isClosedClass(row.classDoc)), [grades, tests, classes, classMap, classTestStats]);
+    const gradeRows = useMemo(() => buildStudentGradeRows({
+        grades, testMap, classMap, classTestStats, getClassId, isClosedClass, resolveClassTestStats,
+    }), [grades, testMap, classMap, classTestStats]);
     const sortedGrades = useMemo(
         () => [...gradeRows].sort((a, b) => (
             (toDate(b.testDate)?.getTime() || 0) - (toDate(a.testDate)?.getTime() || 0)
@@ -528,11 +546,9 @@ export default function StudentDetail() {
         return start && end ? total + Math.max(0, Math.round((end - start) / 60000)) : total;
     }, 0), [clinicLogs]);
 
-    const homeworkRows = useMemo(() => sortNewest(buildHomeworkRowsForScreen({
-        results: homeworkResults,
-        assignments: activeHomeworkAssignments,
-        student,
-    }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, activeHomeworkAssignments, student]);
+    const homeworkRows = useMemo(() => sortNewest(buildStudentHomeworkRows({
+        homeworkResults, assignmentMap, studentId: student?.id,
+    }), ['assignedDate', 'date', 'createdAt']), [homeworkResults, assignmentMap, student?.id]);
 
     const actor = useMemo(() => ({
         uid: profileDocId || user?.uid || '',
@@ -557,7 +573,18 @@ export default function StudentDetail() {
                 setAttendanceCursors(page.cursors);
                 setAttendanceHasMore(page.hasMore);
             } else {
-                setClinicLogs((current) => sortNewest(mergeById([current, page.rows]), ['date']));
+                setClinicLogs((current) => {
+                    const merged = sortNewest(mergeById([current, page.rows]), ['date']);
+                    if (process.env.NODE_ENV !== 'production') {
+                        console.log('[studentDetail][clinic:more]', {
+                            previousClinicCount: current.length,
+                            fetchedNextCount: page.rows.length,
+                            mergedClinicCount: merged.length,
+                            clinicHasMore: page.hasMore,
+                        });
+                    }
+                    return merged;
+                });
                 setClinicCursors(page.cursors);
                 setClinicHasMore(page.hasMore);
             }
@@ -629,12 +656,12 @@ export default function StudentDetail() {
         setPrintError('');
         try {
             const [allAttendances, allClinics, allGrades, allHomework, allPayments, allMaterials, allTimeline] = await Promise.all([
-                fetchByStudentKeysForPrint(COLLECTIONS.attendance, student),
-                fetchByStudentKeysForPrint(COLLECTIONS.clinic, student),
-                fetchStudentRecordsForPrint(COLLECTIONS.grades, student),
-                fetchStudentRecordsForPrint(COLLECTIONS.homeworkResults, student),
-                fetchByStudentKeysForPrint(COLLECTIONS.payments, student).catch(() => []),
-                fetchByStudentKeysForPrint(COLLECTIONS.materials, student).catch(() => []),
+                fetchByStudentKeys(COLLECTIONS.attendance, student, null),
+                fetchByStudentKeys(COLLECTIONS.clinic, student, null),
+                fetchStudentRecords(COLLECTIONS.grades, student, null),
+                fetchStudentRecords(COLLECTIONS.homeworkResults, student, null),
+                fetchByStudentKeys(COLLECTIONS.payments, student, null).catch(() => []),
+                fetchByStudentKeys(COLLECTIONS.materials, student, null).catch(() => []),
                 canUseTimeline ? fetchStaffTimelineByStudent(db, student, { limitCount: null }) : Promise.resolve([]),
             ]);
             const matchedAttendances = allAttendances.filter((item) => isSameStudentByAnyKey(item, student));
@@ -645,7 +672,7 @@ export default function StudentDetail() {
             const referencedTestIds = matchedGrades.map(resolveGradeTestId).filter(Boolean);
             const [referencedTests, classTests] = await Promise.all([
                 fetchByIds(COLLECTIONS.tests, referencedTestIds),
-                fetchByClassIdsForPrint(COLLECTIONS.tests, baseClassIds),
+                fetchByClassIds(COLLECTIONS.tests, baseClassIds, null),
             ]);
             const printTests = mergeById([referencedTests, classTests]);
             const printClassIds = [...new Set([
@@ -658,7 +685,7 @@ export default function StudentDetail() {
             const statsIds = printTests.filter((test) => test.id && getClassId(test)).map((test) => `${getClassId(test)}_${test.id}`);
             const [printClasses, assignmentsByClass, assignmentsById, printStats] = await Promise.all([
                 fetchByIds(COLLECTIONS.classes, printClassIds),
-                fetchByClassIdsForPrint(COLLECTIONS.homeworkAssignments, printClassIds),
+                fetchByClassIds(COLLECTIONS.homeworkAssignments, printClassIds, null),
                 fetchByIds(COLLECTIONS.homeworkAssignments, assignmentIds),
                 fetchByIds('classTestStats', statsIds),
             ]);
