@@ -152,11 +152,22 @@ export const fetchStudentPage = async (collectionName, student, fields, cursors 
         ];
         try {
             const snapshot = await getDocs(query(collection(db, collectionName), ...constraints));
-            return {
+            const result = {
                 docs: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })),
                 cursor: snapshot.docs.at(-1) || null,
                 hasMore: snapshot.size === PAGE_SIZE,
             };
+            if (process.env.NODE_ENV !== 'production' && collectionName === COLLECTIONS.clinic) {
+                console.log('[studentDetail][clinic:query]', {
+                    field,
+                    value,
+                    previousCursorId: cursor?.id || null,
+                    returnedIds: result.docs.map((item) => item.id),
+                    nextCursorId: result.cursor?.id || null,
+                    hasMore: result.hasMore,
+                });
+            }
+            return result;
         } catch (pageError) {
             console.warn(`[StudentDetail] ${collectionName} fallback query skipped`, { field, pageError });
             return { docs: [], cursor: null, hasMore: false };
@@ -276,7 +287,7 @@ const SectionCard = ({ title, description, children, action }) => (
     </section>
 );
 
-const DataTable = ({ columns, rows, emptyText }) => {
+export const DataTable = ({ columns, rows, emptyText }) => {
     if (!rows.length) return <EmptyState>{emptyText}</EmptyState>;
     return (
         <div className="overflow-x-auto">
@@ -439,9 +450,11 @@ export default function StudentDetail() {
                         grades: matchedGrades, testMap: loadedTestMap, classMap: loadedClassMap,
                         classTestStats: Object.fromEntries(statsRows.map((stats) => [stats.id, stats])),
                         getClassId, isClosedClass, resolveClassTestStats,
+                        logger: (details) => console.log('[studentDetail][grade:join]', details),
                     });
                     const renderedHomework = buildStudentHomeworkRows({
                         homeworkResults: matchedHomework, assignmentMap: loadedAssignmentMap, studentId: loadedStudent.id,
+                        logger: (details) => console.log('[studentDetail][homework:join]', details),
                     });
                     const unresolvedAssignmentIds = assignmentIds.filter((id) => !loadedAssignmentMap.has(String(id)));
                     console.log('[studentDetail][grades]', {
@@ -461,6 +474,7 @@ export default function StudentDetail() {
                     });
                     console.log('[studentDetail][clinic:initial]', {
                         fetchedClinicCount: clinicPage.rows.length,
+                        fetchedClinicIds: clinicPage.rows.map((item) => item.id),
                         renderedClinicCount: clinicRows.filter((item) => isSameStudentByAnyKey(item, loadedStudent)).length,
                         clinicHasMore: clinicPage.hasMore,
                     });
@@ -492,14 +506,10 @@ export default function StudentDetail() {
 
     const classMap = useMemo(() => new Map(classes.map((item) => [String(item.id), item])), [classes]);
     const testMap = useMemo(() => new Map(tests.map((item) => [String(item.id), item])), [tests]);
-    const activeHomeworkAssignments = useMemo(
-        () => homeworkAssignments.filter((item) => !isClosedClass(classMap.get(getClassId(item)))),
-        [homeworkAssignments, classMap],
-    );
-    const assignmentMap = useMemo(() => new Map(activeHomeworkAssignments.map((item) => [
+    const assignmentMap = useMemo(() => new Map(homeworkAssignments.map((item) => [
         String(item.id || item.assignmentId),
         item,
-    ])), [activeHomeworkAssignments]);
+    ])), [homeworkAssignments]);
     const sortedClasses = useMemo(() => sortClassesWithClosedLast(classes), [classes]);
     const sortedAttendances = useMemo(
         () => sortNewest(attendances, ['date', 'lessonDate', 'createdAt']),
@@ -578,8 +588,11 @@ export default function StudentDetail() {
                     if (process.env.NODE_ENV !== 'production') {
                         console.log('[studentDetail][clinic:more]', {
                             previousClinicCount: current.length,
+                            previousClinicIds: current.map((item) => item.id),
                             fetchedNextCount: page.rows.length,
+                            fetchedNextIds: page.rows.map((item) => item.id),
                             mergedClinicCount: merged.length,
+                            mergedClinicIds: merged.map((item) => item.id),
                             clinicHasMore: page.hasMore,
                         });
                     }
