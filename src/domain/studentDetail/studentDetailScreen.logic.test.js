@@ -7,10 +7,27 @@ import {
     buildStudentGradeRows,
     buildStudentHomeworkRows,
     buildStudentClinicRows,
+    buildStudentClinicPrintRows,
     fetchStudentPageCore,
 } from './studentDetailScreen.logic';
 
 describe('StudentDetail normal-screen regression paths', () => {
+    test.each([4, 8])('snapshots exactly %i loaded clinic rows for print without a fetch callback', (count) => {
+        const fetchClinic = jest.fn();
+        const screenRows = Array.from({ length: count }, (_, index) => ({
+            id: `clinic-${index}`,
+            sourceType: index === count - 1 ? 'clinicReservation' : 'clinicLog',
+        }));
+
+        const printRows = buildStudentClinicPrintRows(screenRows);
+
+        expect(printRows).toEqual(screenRows);
+        expect(printRows).not.toBe(screenRows);
+        expect(printRows).toHaveLength(count);
+        expect(printRows.some((row) => row.sourceType === 'clinicReservation')).toBe(true);
+        expect(fetchClinic).not.toHaveBeenCalled();
+    });
+
     test('joins a grade to its real test and class', () => {
         const rows = buildStudentGradeRows({
             grades: [{ id: 'grade-1', testId: 'test-1', score: 91 }],

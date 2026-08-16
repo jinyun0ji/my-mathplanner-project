@@ -88,11 +88,11 @@ export default function StudentDetailPrint({ data }) {
                 { label: '최고점', render: (row) => row.highestScore ?? '-' },
             ]} /></PrintSection>
             <PrintSection title="클리닉"><PrintTable rows={data.clinics} columns={[
-                { label: '날짜', render: (row) => date(value(row, ['date', 'clinicDate', 'createdAt'], '')) },
-                { label: '시간', render: (row) => value(row, ['plannedTime', 'time']) },
-                { label: '담당자', render: (row) => value(row, ['tutorName', 'assistantName', 'teacherName', 'createdByName'], '담당자 미지정') },
-                { label: '상태', render: (row) => value(row, ['status', 'clinicStatus']) },
-                { label: '코멘트', render: (row) => value(row, ['clinicComment', 'comment', 'content']) },
+                { label: '날짜', render: (row) => date(value(row, ['effectiveDate', 'date', 'clinicDate', 'reservationDate', 'scheduledAt', 'startAt', 'createdAt'], '')) },
+                { label: '시간', render: (row) => value(row, ['effectiveTime', 'plannedTime', 'time', 'checkIn', 'startAt']) },
+                { label: '담당자', render: (row) => value(row, ['effectiveStaffName', 'tutorName', 'tutor', 'assistantName', 'assistant', 'teacherName', 'teacher', 'createdByName'], '담당자 미지정') },
+                { label: '상태', render: (row) => value(row, ['effectiveStatus', 'status', 'clinicStatus']) },
+                { label: '코멘트', render: (row) => value(row, ['effectiveComment', 'clinicComment', 'comment', 'content']) },
             ]} /></PrintSection>
             <PrintSection title="상담"><PrintTable rows={consultationRows} columns={[
                 { label: '날짜', render: (row) => date(value(row, ['date', 'consultedAt', 'createdAt'], '')) },

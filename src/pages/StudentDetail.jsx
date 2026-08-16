@@ -32,7 +32,7 @@ import {
 import { resolveGradeDisplay, resolveGradeTestId } from '../domain/grade/grade.service';
 import { resolveClassTestStats } from '../domain/grade/classTestStats.service';
 import { formatScoreStat } from '../utils/scoreDisplay';
-import { buildStudentClinicRows, buildStudentGradeRows, buildStudentHomeworkRows, fetchStudentPageCore } from '../domain/studentDetail/studentDetailScreen.logic';
+import { buildStudentClinicPrintRows, buildStudentClinicRows, buildStudentGradeRows, buildStudentHomeworkRows, fetchStudentPageCore } from '../domain/studentDetail/studentDetailScreen.logic';
 
 const COLLECTIONS = {
     users: 'users',
@@ -710,9 +710,11 @@ export default function StudentDetail() {
         setPrintPreparing(true);
         setPrintError('');
         try {
-            const [allAttendances, allClinics, allGrades, allHomework, allPayments, allMaterials, allTimeline] = await Promise.all([
+            // The clinic tab is deliberately the source of truth for printing: do not fetch either
+            // clinic collection here, because that would make the printout differ from the loaded page.
+            const currentClinicsForPrint = buildStudentClinicPrintRows(sortedClinics);
+            const [allAttendances, allGrades, allHomework, allPayments, allMaterials, allTimeline] = await Promise.all([
                 fetchByStudentKeys(COLLECTIONS.attendance, student, null),
-                fetchByStudentKeys(COLLECTIONS.clinic, student, null),
                 fetchStudentRecords(COLLECTIONS.grades, student, null),
                 fetchStudentRecords(COLLECTIONS.homeworkResults, student, null),
                 fetchByStudentKeys(COLLECTIONS.payments, student, null).catch(() => []),
@@ -720,7 +722,6 @@ export default function StudentDetail() {
                 canUseTimeline ? fetchStaffTimelineByStudent(db, student, { limitCount: null }) : Promise.resolve([]),
             ]);
             const matchedAttendances = allAttendances.filter((item) => isSameStudentByAnyKey(item, student));
-            const matchedClinics = allClinics.filter((item) => isSameStudentByAnyKey(item, student));
             const matchedGrades = allGrades.filter((item) => isSameStudentByAnyKey(item, student));
             const matchedHomework = allHomework.filter((item) => isSameStudentByAnyKey(item, student));
             const baseClassIds = getStudentClassIds(student);
@@ -733,7 +734,7 @@ export default function StudentDetail() {
             const printClassIds = [...new Set([
                 ...baseClassIds,
                 ...matchedAttendances.map(getClassId),
-                ...matchedClinics.map(getClassId),
+                ...currentClinicsForPrint.map(getClassId),
                 ...printTests.map(getClassId),
             ].filter(Boolean))];
             const assignmentIds = matchedHomework.map(resolveHomeworkAssignmentId).filter(Boolean);
@@ -763,12 +764,21 @@ export default function StudentDetail() {
             const printClassName = (record) => record?.className
                 || firstValue(printClassMap.get(getClassId(record)), ['name', 'className', 'title'])
                 || firstValue(record, ['className'], '(클래스 미상)');
+            if (process.env.NODE_ENV !== 'production') {
+                const clinicId = (item) => `${item.sourceType || 'clinicLog'}:${item.id}`;
+                console.log('[studentDetail][print:clinic]', {
+                    screenClinicCount: clinicLogs.length,
+                    screenClinicIds: clinicLogs.map(clinicId),
+                    printClinicCount: currentClinicsForPrint.length,
+                    printClinicIds: currentClinicsForPrint.map(clinicId),
+                });
+            }
             setPrintData({
                 student,
                 infoRows,
                 classes: sortClassesWithClosedLast(printClasses),
                 attendances: sortNewest(matchedAttendances, ['date', 'lessonDate', 'createdAt']),
-                clinics: sortNewest(matchedClinics, ['date', 'clinicDate', 'createdAt']),
+                clinics: currentClinicsForPrint,
                 tests: sortNewest(printTests, ['testDate', 'date', 'createdAt']),
                 grades: sortNewest(resolvedGrades, ['testDate', 'date', 'createdAt']),
                 homework: sortNewest(resolvedHomework, ['assignedDate', 'date', 'createdAt']),

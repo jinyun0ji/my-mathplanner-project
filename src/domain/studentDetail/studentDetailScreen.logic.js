@@ -190,6 +190,10 @@ export const buildStudentClinicRows = ({ clinicLogs = [], clinicReservations = [
         });
 };
 
+// Printing must snapshot only the rows the clinic tab has loaded. Keeping this pure also makes it
+// impossible for print preparation to trigger a clinicLogs/clinicReservations read by itself.
+export const buildStudentClinicPrintRows = (screenClinicRows = []) => [...screenClinicRows];
+
 export const fetchStudentPageCore = async ({ pairs, cursors = {}, pageSize, fetchPair, mergeRows, sortRows }) => {
     const bufferedRows = Array.isArray(cursors.__buffer) ? cursors.__buffer : [];
     if (bufferedRows.length >= pageSize) {
