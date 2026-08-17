@@ -524,7 +524,7 @@ export default function GradeManagement({
                                         checked={compactPrint}
                                         onChange={(event) => setCompactPrint(event.target.checked)}
                                     />
-                                    축소 인쇄
+                                    미리보기 축소
                                 </label>
                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={handlePrintClick}>인쇄</button>
                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={() => setIsStatsModalOpen(false)}>닫기</button>

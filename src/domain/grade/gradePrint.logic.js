@@ -51,6 +51,14 @@ export const buildGradePrintPayload = ({ students = [], grades = {}, test, class
         };
     });
 
+    const configuredMaxScore = Number(test.maxScore);
+    const summedQuestionScore = Array.isArray(test.questionScores)
+        ? test.questionScores.reduce((sum, value) => sum + (Number.isFinite(Number(value)) ? Number(value) : 0), 0)
+        : 0;
+    const possibleScore = Number.isFinite(configuredMaxScore) && configuredMaxScore > 0
+        ? configuredMaxScore
+        : (summedQuestionScore > 0 ? summedQuestionScore : null);
+
     return {
         classNameText: className,
         testTitle: test.name || test.title || '-',
@@ -62,6 +70,7 @@ export const buildGradePrintPayload = ({ students = [], grades = {}, test, class
             average,
             maxScore: scores.length ? Math.max(...scores) : null,
             minScore: scores.length ? Math.min(...scores) : null,
+            possibleScore,
         },
         questionStats,
     };
