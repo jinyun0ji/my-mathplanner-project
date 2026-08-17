@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { notifyUsers } = require('../notify/notifications');
+const { resolveUserIdentity } = require('../identity/resolveUserIdentity');
 
 const TYPE = 'CHAT_MESSAGE';
 const db = getFirestore();
@@ -13,9 +14,8 @@ const resolveParticipantAuthUid = async (participantId) => {
     const normalizedId = String(participantId || '').trim();
     if (!normalizedId) return '';
 
-    const userSnapshot = await db.collection('users').doc(normalizedId).get();
-    const authUid = userSnapshot.exists ? String(userSnapshot.data()?.authUid || '').trim() : '';
-    return authUid || normalizedId;
+    const identity = await resolveUserIdentity(normalizedId);
+    return identity?.authUid || '';
 };
 
 const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
@@ -58,40 +58,12 @@ const onChatRoomMessageCreated = functions.firestore
 
         const roomData = roomSnapshot.data() || {};
         const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-        const studentOwnerCandidates = uniqueStrings([
-            roomData.studentId,
-            roomData.studentUid,
-            roomData.studentAuthUid,
-        ]);
-        const parentOwnerCandidates = uniqueStrings([
-            roomData.parentId,
-            roomData.parentUid,
-            roomData.parentAuthUid,
-        ]);
         const senderResolvedAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
-        const senderIsStudent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => studentOwnerCandidates.includes(uid));
-        const senderIsParent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => parentOwnerCandidates.includes(uid));
-        const senderOwnerUids = uniqueStrings([
-            senderId,
-            senderResolvedAuthUid,
-            senderIsStudent ? roomData.studentId : '',
-            senderIsParent ? roomData.parentId : '',
-        ]);
+        const senderOwnerUids = uniqueStrings([senderResolvedAuthUid]);
         const senderOwnerUidSet = new Set(senderOwnerUids);
-        const recipientOwnerUids = uniqueStrings((await Promise.all(
-            participantIds.map(async (participantId) => {
-                const resolvedAuthUid = await resolveParticipantAuthUid(participantId);
-                const participantKeys = uniqueStrings([participantId, resolvedAuthUid]);
-                const recipientIsStudent = participantKeys.some((uid) => studentOwnerCandidates.includes(uid));
-                const recipientIsParent = participantKeys.some((uid) => parentOwnerCandidates.includes(uid));
-                return [
-                    participantId,
-                    resolvedAuthUid,
-                    recipientIsStudent ? roomData.studentId : '',
-                    recipientIsParent ? roomData.parentId : '',
-                ];
-            })
-        )).flat()).filter((ownerUid) => ownerUid && !senderOwnerUidSet.has(ownerUid));
+        const recipientOwnerUids = uniqueStrings(await Promise.all(
+            participantIds.map(resolveParticipantAuthUid)
+        )).filter((ownerUid) => !senderOwnerUidSet.has(ownerUid));
 
         console.log('[notifications] chat room message recipients resolved', {
             roomId,
@@ -131,7 +103,11 @@ const onChatMessageCreated = functions.firestore
         const participantIds = Array.isArray(chatData.participantIds) ? chatData.participantIds : [];
         const senderId = messageData.senderId;
 
-        const recipients = participantIds.filter((uid) => uid && uid !== senderId);
+        const senderIdentity = await resolveUserIdentity(senderId);
+        const resolvedParticipants = await Promise.all(participantIds.map((uid) => resolveUserIdentity(uid)));
+        const recipients = uniqueStrings(resolvedParticipants
+            .map((identity) => identity?.authUid)
+            .filter((uid) => uid && uid !== senderIdentity?.authUid));
 
         const refId = context.params.chatId;
         const lastMessageText = messageData.text || messageData.body || '';

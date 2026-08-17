@@ -7,6 +7,11 @@ const {
     normalizeStudentDocId,
     normalizeClassId,
 } = require('../_utils/ids');
+const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
+
+const buildReservationIdentity = ({ resolvedStudentAuthUid, requestAuthUid }) => ({
+    authUid: String(resolvedStudentAuthUid || requestAuthUid || '').trim() || null,
+});
 
 const createClinicReservation = functions
     .region('us-central1')
@@ -17,40 +22,9 @@ const createClinicReservation = functions
 
     const db = getFirestore();
     const authUid = context.auth.uid;
+    const resolveIdentity = createUserIdentityResolver({ db });
 
-    const resolveCallerRole = async () => {
-        // 1) B안: userAuthIndex/{authUid} -> users/{userDocId}
-        try {
-            const idxSnap = await db.collection('userAuthIndex').doc(authUid).get();
-            const userDocId = idxSnap.exists ? String(idxSnap.data()?.userDocId || '').trim() : '';
-            if (userDocId) {
-                const uSnap = await db.collection('users').doc(userDocId).get();
-                if (uSnap.exists) return uSnap.data()?.role || null;
-            }
-        } catch (e) {
-            console.warn('[createClinicReservation] userAuthIndex lookup failed', e);
-        }
-
-        // 2) 레거시: users/{authUid}
-        try {
-            const uSnap = await db.collection('users').doc(authUid).get();
-            if (uSnap.exists) return uSnap.data()?.role || null;
-        } catch (e) {
-            console.warn('[createClinicReservation] users/{uid} lookup failed', e);
-        }
-
-        // 3) 최후: users where authUid == uid
-        try {
-            const qSnap = await db.collection('users').where('authUid', '==', authUid).limit(1).get();
-            if (!qSnap.empty) return qSnap.docs[0].data()?.role || null;
-        } catch (e) {
-            console.warn('[createClinicReservation] users query authUid lookup failed', e);
-        }
-
-        return null;
-    };
-
-    const role = await resolveCallerRole();
+    const role = (await resolveIdentity(authUid))?.role || null;
     if (!isStaffGroupRole(role) && role !== ROLE.TEACHER) {
         throw new functions.https.HttpsError('permission-denied', '직원/조교만 예약을 생성할 수 있습니다.');
     }
@@ -68,20 +42,15 @@ const createClinicReservation = functions
 
     assertRequired(missing);
 
-    let resolvedStudentAuthUid = data?.authUid ? String(data.authUid).trim() : '';
-    if (!resolvedStudentAuthUid) {
-        try {
-            const studentSnap = await db.collection('users').doc(studentDocId).get();
-            if (studentSnap.exists) {
-                resolvedStudentAuthUid = String(studentSnap.data()?.authUid || '').trim();
-            }
-        } catch (e) {
-            console.warn('[createClinicReservation] users/{studentDocId} authUid lookup failed', {
-                studentDocId,
-                message: e?.message || e,
-            });
-        }
-    }
+    const studentIdentity = await resolveIdentity(studentDocId);
+    const resolvedStudentAuthUid = studentIdentity?.role === ROLE.STUDENT ? studentIdentity.authUid : '';
+    const requestIdentity = !resolvedStudentAuthUid && data?.authUid
+        ? await resolveIdentity(data.authUid)
+        : null;
+    const requestAuthUid = requestIdentity?.role === ROLE.STUDENT
+        && requestIdentity.studentDocId === studentDocId
+        ? requestIdentity.authUid
+        : '';
 
     const col = db.collection('clinicReservations');
 
@@ -103,8 +72,7 @@ const createClinicReservation = functions
         reservationId = ref.id;
         tx.set(ref, {
             studentDocId,
-            authUid: resolvedStudentAuthUid || null,
-            authUid: data?.authUid ? String(data.authUid).trim() : null,
+            ...buildReservationIdentity({ resolvedStudentAuthUid, requestAuthUid }),
             studentUid: data?.studentUid ? String(data.studentUid).trim() : null,
             classId,
             date,
@@ -121,4 +89,4 @@ const createClinicReservation = functions
     return { ok: true, id: reservationId };
 });
 
-module.exports = { createClinicReservation };
+module.exports = { buildReservationIdentity, createClinicReservation };

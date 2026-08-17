@@ -6,6 +6,7 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
+const { getRecipientsForStudent } = require('./src/notify/recipients');
 
 const pick = (obj, keys) => {
   const out = {};
@@ -44,27 +45,6 @@ async function upsertNotificationItem({ userUid, notificationId, payload }) {
     },
     { merge: true },
   );
-}
-
-// get student authUid by studentDocId
-async function getStudentAuthUid(studentDocId) {
-  if (!studentDocId) return null;
-  const snap = await db.collection('users').doc(studentDocId).get();
-  if (!snap.exists) return null;
-  const data = snap.data() || {};
-  return data.authUid || null;
-}
-
-// find parent authUids by studentDocId (parent docs are users/{authUid})
-async function getParentAuthUidsByStudentDocId(studentDocId) {
-  if (!studentDocId) return [];
-  const q = await db
-    .collection('users')
-    .where('role', '==', 'parent')
-    .where('studentIds', 'array-contains', studentDocId)
-    .get();
-
-  return q.docs.map((d) => d.id).filter(Boolean);
 }
 
 // Determine event type from before/after
@@ -149,10 +129,10 @@ exports.onClinicLogsWriteCreateNotifications = functions
     const studentDocId = (after || before || {}).studentId || null;
 
     // 수신자 목록 만들기
-    const studentAuthUid = await getStudentAuthUid(studentDocId);
-    const parentAuthUids = await getParentAuthUidsByStudentDocId(studentDocId);
-
-    const receivers = [studentAuthUid, ...parentAuthUids].filter(Boolean);
+    const recipients = await getRecipientsForStudent(studentDocId);
+    const receivers = recipients
+      ? [...new Set([recipients.studentUid, ...recipients.parentUids].filter(Boolean))]
+      : [];
 
     if (receivers.length === 0) {
       console.warn('[clinicNotifications] no receivers', { logId, studentDocId });
