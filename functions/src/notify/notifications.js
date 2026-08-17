@@ -1,6 +1,5 @@
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
-const { buildNotificationDocument, buildFcmDataPayload } = require('./builders');
-const { sendFcmToUsers } = require('./fcm');
+const { buildNotificationDocument } = require('./builders');
 const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
 
 const db = getFirestore();
@@ -57,7 +56,7 @@ const createNotificationLog = async ({ targetCount, payload, fcmData, logData = 
     return logRef;
 };
 
-const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
+const notifyUsers = async ({ userIds, payload, fcmData }) => {
     if (!isNotificationSendingEnabled()) {
         console.debug('[notifications] sending skipped: notification_disabled');
         return {
@@ -76,37 +75,14 @@ const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
         studentId: fcmData?.studentId || payload?.studentId || payload?.authUid || null,
     };
     const { notificationIds, targetUserCount } = await createNotificationForUsers(userIds, notificationPayload);
-    const logRef = await createNotificationLog({
-        targetCount: targetUserCount,
-        payload: notificationPayload,
-        fcmData,
-        logData,
-    });
-
-    if (targetUserCount === 0) {
-        return {
-            notificationIds,
-            targetCount: targetUserCount,
-            notificationLogId: logRef?.id || null,
-            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
-            success: true,
-            sent: false,
-        };
-    }
-
-    const fcmStats = await sendFcmToUsers(
-        userIds,
-        buildFcmDataPayload(fcmData),
-        { notificationIds, logRef },
-    );
 
     return {
         notificationIds,
         targetCount: targetUserCount,
-        notificationLogId: logRef?.id || null,
-        fcmStats,
-        success: (fcmStats?.failureCount || 0) === 0,
-        sent: (fcmStats?.successCount || 0) > 0,
+        notificationLogId: null,
+        fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
+        success: true,
+        sent: false,
     };
 };
 

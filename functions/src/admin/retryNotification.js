@@ -1,7 +1,8 @@
 const functions = require('firebase-functions');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { assertAdmin } = require('../_utils/assertAdmin');
-const { notifyUsers } = require('../notify/notifications');
+const { sendFcmToUsers } = require('../notify/fcm');
+const { buildFcmDataPayload } = require('../notify/builders');
 const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
 
 const db = getFirestore();
@@ -59,14 +60,6 @@ const retryNotification = functions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError('failed-precondition', 'No users with valid tokens to retry.');
     }
 
-    const payload = {
-        type: logData.type,
-        title: logData.title,
-        body: logData.body,
-        ref: logData.ref,
-        studentId: logData.studentId || null,
-    };
-
     const fcmData = {
         type: logData.type,
         refCollection: logData.refCollection,
@@ -74,14 +67,10 @@ const retryNotification = functions.https.onCall(async (data, context) => {
         studentId: logData.studentId || null,
     };
 
-    const { targetCount, fcmStats, notificationLogId } = await notifyUsers({
-        userIds: eligibleUids,
-        payload,
-        fcmData,
-        logData: {
-            retryOf: logId,
-        },
-    });
+    // A retry re-dispatches the failed delivery. It must not create a new
+    // notification item, because item creation is the automatic-send trigger.
+    const fcmStats = await sendFcmToUsers(eligibleUids, buildFcmDataPayload(fcmData));
+    const notificationLogId = logId;
 
     const failedUidSet = new Set(fcmStats?.failedUids || []);
     const retrySuccessUids = eligibleUids.filter((uid) => !failedUidSet.has(uid));
@@ -116,7 +105,7 @@ const retryNotification = functions.https.onCall(async (data, context) => {
         retry: {
             attempted: true,
             attemptedAt: FieldValue.serverTimestamp(),
-            retryLogId: notificationLogId,
+            retryLogId: logId,
             retrySuccessCount: fcmStats?.successCount || 0,
             retryFailureCount: fcmStats?.failureCount || 0,
         },
@@ -127,7 +116,7 @@ const retryNotification = functions.https.onCall(async (data, context) => {
 
     return {
         retryLogId: notificationLogId,
-        targetCount,
+        targetCount: eligibleUids.length,
         successCount: fcmStats?.successCount || 0,
         failureCount: fcmStats?.failureCount || 0,
     };

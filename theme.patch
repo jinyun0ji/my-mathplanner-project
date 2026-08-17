@@ -1,451 +1,568 @@
-diff --git a/src/components/Grade/GradePrintDocument.jsx b/src/components/Grade/GradePrintDocument.jsx
-index 6ec537c9ff2864490e63197729e18db1ac8c8a4c..3bd356373b5834806823b2af8c1cb663bebb071d 100644
---- a/src/components/Grade/GradePrintDocument.jsx
-+++ b/src/components/Grade/GradePrintDocument.jsx
-@@ -1,133 +1,95 @@
- import React, { forwardRef } from 'react';
+diff --git a/functions/src/admin/retryNotification.js b/functions/src/admin/retryNotification.js
+index 584c5e7c4310fa10969c8078163825c00c00ba49..1f296e32b6d0c27119063881771e78b02671b7f1 100644
+--- a/functions/src/admin/retryNotification.js
++++ b/functions/src/admin/retryNotification.js
+@@ -1,29 +1,30 @@
+ const functions = require('firebase-functions');
+ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+ const { assertAdmin } = require('../_utils/assertAdmin');
+-const { notifyUsers } = require('../notify/notifications');
++const { sendFcmToUsers } = require('../notify/fcm');
++const { buildFcmDataPayload } = require('../notify/builders');
+ const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
  
- const formatNumber = (value, digits = 1) => (
-   Number.isFinite(Number(value)) ? Number(value).toFixed(digits).replace(/\.0$/, '') : '-'
- );
+ const db = getFirestore();
+ const RETRY_LIMIT = 50;
  
- const ScoreDistribution = ({ scores = [], average = null, maxScore = null }) => {
-   const ceiling = Math.max(Number(maxScore) || 0, ...scores, 1);
--  const x = (score) => 28 + (Math.max(0, Math.min(ceiling, score)) / ceiling) * 544;
--  const lanes = [62, 72, 82, 92];
-+  const x = (score) => 34 + (Math.max(0, Math.min(ceiling, score)) / ceiling) * 532;
-+  const frequencies = [...scores.reduce((map, score) => map.set(score, (map.get(score) || 0) + 1), new Map())]
-+    .sort(([left], [right]) => left - right);
-+  const frequencyMode = scores.length > 20 || frequencies.some(([, count]) => count > 5);
-+  const lanesByScore = new Map();
+ const getUidsWithTokens = async (uids) => {
+     const checks = await Promise.all(uids.map(async (uid) => {
+         const snapshot = await db.collection('users').doc(uid).collection('fcmTokens').limit(1).get();
+         return snapshot.empty ? null : uid;
+     }));
  
--  return (
--    <svg className="score-distribution" viewBox="0 0 600 118" role="img" aria-label="전체 응시자의 실제 점수와 평균 위치">
--      <line x1="28" y1="78" x2="572" y2="78" className="distribution-axis" />
--      {[0, ceiling / 2, ceiling].map((tick) => (
--        <g key={tick}>
--          <line x1={x(tick)} y1="74" x2={x(tick)} y2="83" className="distribution-axis" />
--          <text x={x(tick)} y="105" textAnchor="middle" className="distribution-label">{formatNumber(tick)}</text>
--        </g>
--      ))}
--      {Number.isFinite(average) && (
--        <g>
--          <line x1={x(average)} y1="21" x2={x(average)} y2="83" className="average-marker" />
--          <text x={x(average)} y="14" textAnchor="middle" className="average-label">평균 {formatNumber(average)}</text>
--        </g>
--      )}
--      {scores.map((score, index) => (
--        <circle key={`${score}-${index}`} cx={x(score)} cy={lanes[index % lanes.length]} r="3.2" className="student-marker" />
--      ))}
--    </svg>
--  );
-+  return <svg className="score-distribution" viewBox="0 0 600 102" role="img" aria-label={`전체 응시자의 실제 점수와 평균 위치 (${frequencyMode ? '점수별 인원' : '개별 응시자'} 표시)`}>
-+    <line x1="34" y1="67" x2="566" y2="67" className="distribution-axis" />
-+    {[0, ceiling / 2, ceiling].map((tick) => <g key={tick}>
-+      <line x1={x(tick)} y1="62" x2={x(tick)} y2="73" className="distribution-tick" />
-+      <text x={x(tick)} y="94" textAnchor="middle" className="distribution-label">{formatNumber(tick)}점</text>
-+    </g>)}
-+    {Number.isFinite(average) && <g>
-+      <line x1={x(average)} y1="19" x2={x(average)} y2="72" className="average-marker" />
-+      <text x={x(average)} y="13" textAnchor="middle" className="average-label">평균 {formatNumber(average)}점</text>
-+    </g>}
-+    {frequencyMode ? frequencies.map(([score, count]) => <g key={score} className="frequency-marker"><circle cx={x(score)} cy="54" r="4.5" className="student-marker" /><text x={x(score)} y="43" textAnchor="middle">{count}명</text></g>) : scores.map((score, index) => {
-+      const lane = lanesByScore.get(score) || 0;
-+      lanesByScore.set(score, lane + 1);
-+      return <circle key={`${score}-${index}`} cx={x(score)} cy={57 - (lane % 4) * 10} r="4" className="student-marker" />;
-+    })}
-+  </svg>;
+     return checks.filter(Boolean);
  };
  
--const GradePrintDocument = forwardRef(function GradePrintDocument({
--  classNameText,
--  testTitle,
--  testDateText,
--  stats = {},
--  scores = [],
--  rankings = [],
--  questionStats = [],
--  printScale = 1,
--}, ref) {
--  return (
--    <article ref={ref} className="print-root grade-print-root" style={{ '--preview-scale': printScale }}>
--      <style>{`
--        @page { size: A4 portrait; margin: 13mm 14mm 15mm; }
--        @media screen { .grade-print-root { transform: scale(var(--preview-scale)); transform-origin: top left; } }
--        @media print {
--          .print-root, .print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
--          .grade-print-root { width: auto !important; min-height: 0 !important; transform: none !important; }
--        }
--        .grade-print-root { box-sizing: border-box; width: 182mm; min-height: 257mm; color: #172033; background: #fff; font-family: Pretendard, "Noto Sans KR", ui-sans-serif, system-ui, sans-serif; font-size: 9.5pt; line-height: 1.45; }
--        .report-header { padding-bottom: 7mm; border-bottom: 1.4px solid #263b72; break-inside: avoid; page-break-inside: avoid; }
--        .report-kicker { margin: 0 0 2mm; color: #455fab; font-size: 8pt; font-weight: 800; letter-spacing: .12em; }
--        .report-title { margin: 0; font-size: 22pt; line-height: 1.2; letter-spacing: -.035em; }
--        .report-meta { display: flex; gap: 5mm; margin: 3mm 0 0; color: #596273; font-size: 9pt; }
--        .metric-strip { display: grid; grid-template-columns: 1.25fr repeat(3, 1fr); margin: 7mm 0 8mm; padding: 4mm 0; border-top: 1px solid #d9dee8; border-bottom: 1px solid #d9dee8; break-inside: avoid; page-break-inside: avoid; }
--        .metric { padding: 0 5mm; border-left: 1px solid #e1e5ec; }
--        .metric:first-child { padding-left: 0; border-left: 0; }
--        .metric-label { display: block; margin-bottom: 1mm; color: #667085; font-size: 7.5pt; font-weight: 700; }
--        .metric-value { color: #172033; font-size: 15pt; font-weight: 800; letter-spacing: -.02em; }
--        .section { margin-top: 8mm; }
--        .section-heading { margin: 0 0 3mm; padding-bottom: 2mm; border-bottom: 1px solid #d9dee8; color: #263b72; font-size: 12pt; font-weight: 800; break-after: avoid; page-break-after: avoid; }
--        .section-note { margin: -2mm 0 3mm; color: #697386; font-size: 8pt; }
--        .distribution-wrap { padding: 3mm 1mm 0; break-inside: avoid; page-break-inside: avoid; }
--        .score-distribution { display: block; width: 100%; height: 35mm; overflow: visible; }
--        .distribution-axis { stroke: #70798a; stroke-width: 1; }
--        .distribution-label { fill: #596273; font-size: 11px; }
--        .student-marker { fill: #fff; stroke: #455fab; stroke-width: 1.6; }
--        .average-marker { stroke: #172033; stroke-width: 1.2; stroke-dasharray: 4 3; }
--        .average-label { fill: #172033; font-size: 11px; font-weight: 800; }
--        .report-table { width: 100%; border-collapse: collapse; border-spacing: 0; }
--        .report-table thead { display: table-header-group; }
--        .report-table tr { break-inside: avoid; page-break-inside: avoid; }
--        .report-table th { padding: 2.2mm 2.5mm; border-bottom: 1.2px solid #65718a; color: #4e596b; font-size: 7.5pt; font-weight: 800; text-align: left; }
--        .report-table td { padding: 2.2mm 2.5mm; border-bottom: 1px solid #e1e5ec; }
--        .report-table th:first-child, .report-table td:first-child { width: 14%; text-align: center; }
--        .report-table .numeric { text-align: right; font-variant-numeric: tabular-nums; }
--        .rank-number { font-weight: 800; color: #263b72; }
--        .empty-row { padding: 8mm !important; color: #7b8494; text-align: center !important; }
--        .question-section { break-before: auto; }
--        .question-table th:first-child, .question-table td:first-child { width: 18%; }
--        .report-footer { margin-top: 7mm; padding-top: 2mm; border-top: 1px solid #d9dee8; color: #7b8494; font-size: 7pt; }
--      `}</style>
-+const QuestionTable = ({ rows }) => <table className="report-table question-table">
-+  <colgroup><col className="question-number-column" /><col className="question-point-column" /><col className="question-correct-column" /><col className="question-rate-column" /></colgroup>
-+  <thead><tr><th>문항</th><th className="numeric">배점</th><th className="numeric">정답</th><th className="numeric">정답률</th></tr></thead>
-+  <tbody>{rows.map((row) => <tr key={row.question}><td>{row.question}</td><td className="numeric">{row.pointValue == null ? '-' : `${formatNumber(row.pointValue)}점`}</td><td className="numeric">{row.correctCount} / {row.submittedCount}</td><td><div className="rate-cell"><span>{formatNumber(row.correctRate)}%</span><span className="rate-track" aria-hidden="true"><span style={{ width: `${Math.max(0, Math.min(100, row.correctRate || 0))}%` }} /></span></div></td></tr>)}</tbody>
-+</table>;
+ const retryNotification = functions.https.onCall(async (data, context) => {
+     await assertAdmin(context);
  
--      <header className="report-header">
--        <p className="report-kicker">시험 결과 리포트</p>
--        <h1 className="report-title">{testTitle}</h1>
--        <p className="report-meta"><span>{classNameText}</span><span>시험일 {testDateText}</span></p>
--      </header>
+     if (!isNotificationSendingEnabled()) {
+         console.debug('[notifications] retry skipped: notification_disabled');
+         return notificationDisabledResult();
+     }
+ 
+     const logId = typeof data?.logId === 'string' ? data.logId.trim() : '';
+ 
+     if (!logId) {
+@@ -37,100 +38,88 @@ const retryNotification = functions.https.onCall(async (data, context) => {
+         throw new functions.https.HttpsError('not-found', 'notification log not found.');
+     }
+ 
+     const logData = logSnapshot.data() || {};
+ 
+     if (logData.retry?.attempted) {
+         throw new functions.https.HttpsError('failed-precondition', 'Retry already attempted for this log.');
+     }
+ 
+     const failedSnapshot = await logRef.collection('deliveries')
+         .where('status', '==', 'failed')
+         .limit(RETRY_LIMIT)
+         .get();
+     const failedUids = failedSnapshot.docs.map((doc) => doc.id).filter(Boolean);
+ 
+     if (failedUids.length === 0) {
+         throw new functions.https.HttpsError('failed-precondition', 'No failed users to retry.');
+     }
+ 
+     const eligibleUids = await getUidsWithTokens(failedUids);
+ 
+     if (eligibleUids.length === 0) {
+         throw new functions.https.HttpsError('failed-precondition', 'No users with valid tokens to retry.');
+     }
+ 
+-    const payload = {
+-        type: logData.type,
+-        title: logData.title,
+-        body: logData.body,
+-        ref: logData.ref,
+-        studentId: logData.studentId || null,
+-    };
 -
--      <section className="metric-strip" aria-label="시험 핵심 통계">
--        <div className="metric"><span className="metric-label">전체 응시자</span><strong className="metric-value">{stats.submittedCount ?? 0}명</strong></div>
--        <div className="metric"><span className="metric-label">평균</span><strong className="metric-value">{formatNumber(stats.average)}점</strong></div>
--        <div className="metric"><span className="metric-label">최고점</span><strong className="metric-value">{formatNumber(stats.maxScore)}점</strong></div>
--        <div className="metric"><span className="metric-label">최저점</span><strong className="metric-value">{formatNumber(stats.minScore)}점</strong></div>
--      </section>
--
--      <section className="section distribution-wrap">
--        <h2 className="section-heading">성적 분포</h2>
--        <p className="section-note">점 하나가 응시자 한 명의 실제 원점수이며, 점이 겹치지 않도록 세로 위치만 나누었습니다.</p>
--        <ScoreDistribution scores={scores} average={stats.average} maxScore={stats.maxScore} />
--      </section>
--
--      <section className="section ranking-section">
--        <h2 className="section-heading">응시자 성적 순위</h2>
--        <table className="report-table ranking-table">
--          <thead><tr><th>석차</th><th>학생</th><th className="numeric">점수</th><th className="numeric">평균 대비</th></tr></thead>
--          <tbody>
--            {rankings.length ? rankings.map((row) => {
--              const delta = row.score - stats.average;
--              return <tr key={row.studentId}><td className="rank-number">{row.rank}</td><td>{row.studentName}</td><td className="numeric">{formatNumber(row.score)}</td><td className="numeric">{delta > 0 ? '+' : ''}{formatNumber(delta)}</td></tr>;
--            }) : <tr><td colSpan="4" className="empty-row">응시 결과가 없습니다.</td></tr>}
--          </tbody>
--        </table>
--      </section>
-+// Eight rows per column keeps each pair fragment-safe at the established 8.5pt body size.
-+const groupQuestions = (rows, groupSize = 16) => Array.from({ length: Math.ceil(rows.length / groupSize) }, (_, index) => {
-+  const group = rows.slice(index * groupSize, (index + 1) * groupSize);
-+  const splitAt = Math.ceil(group.length / 2);
-+  return [group.slice(0, splitAt), group.slice(splitAt)];
-+});
+     const fcmData = {
+         type: logData.type,
+         refCollection: logData.refCollection,
+         refId: logData.refId,
+         studentId: logData.studentId || null,
+     };
  
--      {questionStats.length > 0 && <section className="section question-section">
--        <h2 className="section-heading">문항별 분석</h2>
--        <p className="section-note">전체 응시자의 저장된 정오답 데이터를 기준으로 계산했습니다.</p>
--        <table className="report-table question-table">
--          <thead><tr><th>문항</th><th className="numeric">배점</th><th className="numeric">정답자</th><th className="numeric">응시자</th><th className="numeric">정답률</th></tr></thead>
--          <tbody>{questionStats.map((row) => <tr key={row.question}><td>{row.question}</td><td className="numeric">{row.pointValue == null ? '-' : formatNumber(row.pointValue)}</td><td className="numeric">{row.correctCount}</td><td className="numeric">{row.submittedCount}</td><td className="numeric">{formatNumber(row.correctRate)}%</td></tr>)}</tbody>
--        </table>
--      </section>}
-+const GradePrintDocument = forwardRef(function GradePrintDocument({ classNameText, testTitle, testDateText, stats = {}, scores = [], rankings = [], questionStats = [], printScale = 1 }, ref) {
-+  const rates = questionStats.map((row) => row.correctRate).filter(Number.isFinite);
-+  const high = rates.length ? Math.max(...rates) : null;
-+  const low = rates.length ? Math.min(...rates) : null;
-+  const questionsAt = (rate) => questionStats.filter((row) => row.correctRate === rate).map((row) => `${row.question}번`).join(', ');
+-    const { targetCount, fcmStats, notificationLogId } = await notifyUsers({
+-        userIds: eligibleUids,
+-        payload,
+-        fcmData,
+-        logData: {
+-            retryOf: logId,
+-        },
+-    });
++    // A retry re-dispatches the failed delivery. It must not create a new
++    // notification item, because item creation is the automatic-send trigger.
++    const fcmStats = await sendFcmToUsers(eligibleUids, buildFcmDataPayload(fcmData));
++    const notificationLogId = logId;
  
--      <footer className="report-footer">본 문서는 성적 관리 화면의 저장 데이터를 기준으로 생성되었습니다.</footer>
--    </article>
--  );
-+  return <article ref={ref} className="print-root grade-print-root" style={{ '--preview-scale': printScale }}>
-+    <style>{`
-+      @page { size: A4 portrait; margin: 13mm 14mm 15mm; }
-+      @media screen { .grade-print-root { transform: scale(var(--preview-scale)); transform-origin: top left; } }
-+      @media print { .print-root, .print-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .grade-print-root { position: static !important; width: auto !important; min-height: 0 !important; transform: none !important; } }
-+      .grade-print-root { box-sizing: border-box; width: 182mm; min-height: 257mm; color: #172033; background: #fff; font-family: Pretendard, "Noto Sans KR", ui-sans-serif, system-ui, sans-serif; font-size: 9pt; line-height: 1.4; }
-+      .report-header { padding-bottom: 5mm; border-bottom: 1.4px solid #263b72; break-inside: avoid; page-break-inside: avoid; }
-+      .report-kicker { margin: 0 0 2mm; color: #455fab; font-size: 8pt; font-weight: 800; letter-spacing: .12em; }
-+      .report-title { margin: 0; font-size: 21pt; line-height: 1.2; letter-spacing: -.035em; }
-+      .report-meta { display: flex; gap: 5mm; margin: 2mm 0 0; color: #596273; font-size: 9pt; }
-+      .metric-strip { display: grid; grid-template-columns: repeat(4, 1fr); width: 78%; margin: 5mm auto; padding: 3mm 0; border-block: 1px solid #d9dee8; break-inside: avoid; page-break-inside: avoid; }
-+      .metric { padding: 0 3mm; border-left: 1px solid #e1e5ec; } .metric:first-child { border-left: 0; }
-+      .metric-label { display: block; margin-bottom: .7mm; color: #667085; font-size: 7.5pt; font-weight: 700; }
-+      .metric-value { font-size: 14pt; font-weight: 800; letter-spacing: -.02em; }
-+      .section { margin-top: 6mm; } .section-heading { margin: 0 0 3mm; padding-bottom: 2mm; border-bottom: 1px solid #d9dee8; color: #263b72; font-size: 12pt; font-weight: 800; break-after: avoid; page-break-after: avoid; }
-+      .section-note { margin: -2mm 0 2mm; color: #697386; font-size: 8pt; }
-+      .distribution-wrap { padding: 1mm 1mm 0; break-inside: avoid; page-break-inside: avoid; }
-+      .score-distribution { display: block; width: 100%; height: 27mm; overflow: visible; }
-+      .distribution-axis { stroke: #4e596b; stroke-width: 2; } .distribution-tick { stroke: #4e596b; stroke-width: 1.5; }
-+      .distribution-label { fill: #596273; font-size: 12px; font-weight: 600; } .student-marker { fill: #fff; stroke: #455fab; stroke-width: 2; }
-+      .average-marker { stroke: #172033; stroke-width: 1.5; stroke-dasharray: 4 3; } .average-label { fill: #172033; font-size: 11px; font-weight: 800; }
-+      .frequency-marker text { fill: #263b72; font-size: 10px; font-weight: 800; }
-+      .exam-summary { display: flex; flex-wrap: wrap; justify-content: center; gap: 2mm 7mm; margin: 1mm 0 0; color: #4e596b; font-size: 8.5pt; font-variant-numeric: tabular-nums; }
-+      .report-table { width: 100%; border-collapse: collapse; border-spacing: 0; } .report-table thead { display: table-header-group; }
-+      .report-table tr { break-inside: avoid; page-break-inside: avoid; } .report-table th { padding: 2mm 2.5mm; border-bottom: 1.2px solid #65718a; color: #4e596b; font-size: 7.5pt; font-weight: 800; text-align: left; }
-+      .report-table td { padding: 2mm 2.5mm; border-bottom: 1px solid #e1e5ec; font-size: 8.5pt; } .report-table th:first-child, .report-table td:first-child { text-align: center; }
-+      .report-table .numeric { text-align: right; font-variant-numeric: tabular-nums; } .rank-number { font-weight: 800; color: #263b72; } .empty-row { padding: 8mm !important; color: #7b8494; text-align: center !important; }
-+      .ranking-table { width: 76%; margin: 0 auto; table-layout: fixed; } .ranking-table th:nth-child(1) { width: 12%; } .ranking-table th:nth-child(2) { width: 46%; } .ranking-table th:nth-child(3) { width: 18%; } .ranking-table th:nth-child(4) { width: 24%; }
-+      .ranking-table th:nth-child(2), .ranking-table td:nth-child(2) { text-align: left; overflow-wrap: anywhere; }
-+      .question-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; margin-bottom: 4mm; break-inside: avoid; page-break-inside: avoid; } .question-table { table-layout: fixed; }
-+      .question-number-column { width: 14%; } .question-point-column { width: 20%; } .question-correct-column { width: 27%; } .question-rate-column { width: 39%; }
-+      .rate-cell { display: grid; grid-template-columns: 3.5em 1fr; align-items: center; gap: 1.5mm; font-variant-numeric: tabular-nums; text-align: right; } .rate-track { height: 1.2mm; background: #e1e5ec; } .rate-track > span { display: block; height: 100%; background: #45546f; }
-+    `}</style>
-+    <header className="report-header"><p className="report-kicker">시험 결과 리포트</p><h1 className="report-title">{testTitle}</h1><p className="report-meta"><span>{classNameText}</span><span>시험일 {testDateText}</span></p></header>
-+    <section className="metric-strip" aria-label="시험 핵심 통계">{[['전체 응시자', `${stats.submittedCount ?? 0}명`], ['평균', `${formatNumber(stats.average)}점`], ['최고점', `${formatNumber(stats.maxScore)}점`], ['최저점', `${formatNumber(stats.minScore)}점`]].map(([label, value]) => <div className="metric" key={label}><span className="metric-label">{label}</span><strong className="metric-value">{value}</strong></div>)}</section>
-+    <section className="section distribution-wrap"><h2 className="section-heading">성적 분포</h2><p className="section-note">{(scores.length > 20 || [...scores.reduce((map, score) => map.set(score, (map.get(score) || 0) + 1), new Map()).values()].some((count) => count > 5)) ? '실제 점수 위치별 응시 인원을 표시합니다.' : '점 하나가 응시자 한 명의 실제 원점수이며, 같은 점수는 세로로 나누어 표시합니다.'}</p><ScoreDistribution scores={scores} average={stats.average} maxScore={stats.possibleScore || stats.maxScore} />
-+      {rates.length > 0 && <p className="exam-summary"><span>평균 {formatNumber(stats.average)} / {formatNumber(stats.possibleScore)}점</span><span>가장 높은 정답률: {questionsAt(high)} ({formatNumber(high)}%)</span><span>가장 낮은 정답률: {questionsAt(low)} ({formatNumber(low)}%)</span></p>}
-+    </section>
-+    <section className="section ranking-section"><h2 className="section-heading">응시자 성적 순위</h2><table className="report-table ranking-table"><thead><tr><th>석차</th><th>학생</th><th className="numeric">점수</th><th className="numeric">평균 대비</th></tr></thead><tbody>{rankings.length ? rankings.map((row) => { const delta = row.score - stats.average; return <tr key={row.studentId}><td className="rank-number">{row.rank}</td><td>{row.studentName}</td><td className="numeric">{formatNumber(row.score)}</td><td className="numeric">{delta > 0 ? '+' : ''}{formatNumber(delta)}</td></tr>; }) : <tr><td colSpan="4" className="empty-row">응시 결과가 없습니다.</td></tr>}</tbody></table></section>
-+    {questionStats.length > 0 && <section className="section question-section"><h2 className="section-heading">문항별 분석</h2><p className="section-note">전체 응시자의 저장된 정오답 데이터를 기준으로 계산했습니다.</p><div className="question-groups">{groupQuestions(questionStats).map((columns, index) => <div className="question-pair" key={index}>{columns.map((rows, column) => rows.length ? <QuestionTable rows={rows} key={column} /> : null)}</div>)}</div></section>}
-+  </article>;
- });
+     const failedUidSet = new Set(fcmStats?.failedUids || []);
+     const retrySuccessUids = eligibleUids.filter((uid) => !failedUidSet.has(uid));
  
- export default GradePrintDocument;
-diff --git a/src/components/Grade/GradePrintDocument.test.jsx b/src/components/Grade/GradePrintDocument.test.jsx
-index eb95aed3232973ee3a2eab021566e5b6f9e8108e..8615f9b3242b9823800295235077bc4776ba085d 100644
---- a/src/components/Grade/GradePrintDocument.test.jsx
-+++ b/src/components/Grade/GradePrintDocument.test.jsx
-@@ -1,36 +1,47 @@
- import React from 'react';
- import { render, screen } from '@testing-library/react';
- import GradePrintDocument from './GradePrintDocument';
+     if (retrySuccessUids.length > 0 || failedUidSet.size > 0) {
+         const failedEntries = fcmStats?.failedEntries || [];
  
- const report = {
-     classNameText: '중등 A반',
-     testTitle: '8월 정기 테스트',
-     testDateText: '2026-08-16',
--    stats: { submittedCount: 3, average: 90, maxScore: 100, minScore: 80 },
-+    stats: { submittedCount: 3, average: 90, maxScore: 100, minScore: 80, possibleScore: 100 },
-     scores: [100, 90, 80],
-     rankings: [
-         { studentId: '1', studentName: '김학생', score: 100, rank: 1 },
-         { studentId: '2', studentName: '이학생', score: 90, rank: 2 },
-         { studentId: '3', studentName: '박학생', score: 80, rank: 3 },
-     ],
-     questionStats: [{ question: 1, pointValue: 10, correctCount: 2, submittedCount: 3, correctRate: 66.666 }],
- };
+         for (let i = 0; i < retrySuccessUids.length; i += 450) {
+             const batch = db.batch();
+             retrySuccessUids.slice(i, i + 450).forEach((uid) => {
+                 batch.delete(logRef.collection('deliveries').doc(uid));
+             });
+             await batch.commit();
+         }
  
- describe('GradePrintDocument', () => {
-     test('renders the complete ranking and actual-score distribution without top/bottom lists', () => {
-         const { container } = render(<GradePrintDocument {...report} />);
+         for (let i = 0; i < failedEntries.length; i += 450) {
+             const batch = db.batch();
+             failedEntries.slice(i, i + 450).forEach((entry) => {
+                 batch.set(logRef.collection('deliveries').doc(entry.uid), {
+                     status: 'failed',
+                     errorCode: entry.errorCode,
+                     failedAt: FieldValue.serverTimestamp(),
+                     lastAttemptedAt: FieldValue.serverTimestamp(),
+                     retryLogId: notificationLogId,
+                 }, { merge: true });
+             });
+             await batch.commit();
+         }
+     }
  
-         expect(screen.getByText('응시자 성적 순위')).toBeInTheDocument();
-         expect(screen.getAllByRole('row')).toHaveLength(6); // ranking + question headers and rows
--        expect(screen.getByLabelText('전체 응시자의 실제 점수와 평균 위치').querySelectorAll('.student-marker')).toHaveLength(3);
--        expect(screen.getByText('평균 90')).toBeInTheDocument();
-+        expect(screen.getByLabelText(/전체 응시자의 실제 점수와 평균 위치/).querySelectorAll('.student-marker')).toHaveLength(3);
-+        expect(screen.getByText('평균 90점')).toBeInTheDocument();
-         expect(container).not.toHaveTextContent('최고점 Top 5');
-         expect(container).not.toHaveTextContent('최저점 Bottom 5');
-     });
- 
-     test('renders question point value and accuracy from the resolver', () => {
-         render(<GradePrintDocument {...report} />);
-         expect(screen.getByText('문항별 분석')).toBeInTheDocument();
--        expect(screen.getByText('66.7%')).toBeInTheDocument();
-+        expect(screen.getAllByText('66.7%')).toHaveLength(2);
-+        expect(screen.getByText('2 / 3')).toBeInTheDocument();
-+        expect(screen.getByText('10점')).toBeInTheDocument();
-+    });
-+    test('switches to exact-score frequency markers above twenty students without dropping scores', () => {
-+        const scores = Array.from({ length: 30 }, (_, index) => index % 10);
-+        const rankings = scores.map((score, index) => ({ studentId: String(index), studentName: `학생${index}`, score, rank: index + 1 }));
-+        render(<GradePrintDocument {...report} scores={scores} rankings={rankings} stats={{ ...report.stats, submittedCount: 30 }} />);
-+        const chart = screen.getByLabelText(/점수별 인원 표시/);
-+        expect(chart.querySelectorAll('.frequency-marker')).toHaveLength(10);
-+        expect(chart.querySelectorAll('.student-marker')).toHaveLength(10);
-+        expect(screen.getAllByRole('row')).toHaveLength(33);
-     });
- });
-diff --git a/src/domain/grade/gradePrint.logic.js b/src/domain/grade/gradePrint.logic.js
-index 353b398852952c541e1bc93177fd0792a577e3f8..f6c6c2c7766ad95a3c268d86379bc28d40a7b8f7 100644
---- a/src/domain/grade/gradePrint.logic.js
-+++ b/src/domain/grade/gradePrint.logic.js
-@@ -29,40 +29,49 @@ export const buildGradePrintPayload = ({ students = [], grades = {}, test, class
-             attempted,
-         };
-     }).filter((row) => row.attempted && Number.isFinite(row.score));
- 
-     const rankings = buildCompetitionRanking(attemptedRows.filter((row) => Number.isFinite(row.score)));
-     const scores = rankings.map((row) => row.score);
-     const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
-     const questionCount = Number(test.totalQuestions)
-         || (Array.isArray(test.questionScores) ? test.questionScores.length : 0);
-     const questionStats = Array.from({ length: questionCount }, (_, index) => {
-         const question = index + 1;
-         const correctCount = attemptedRows.reduce(
-             (count, row) => count + (isCorrect(row.answerMap?.[question] ?? row.answerMap?.[String(question)]) ? 1 : 0),
-             0,
-         );
-         const pointValue = Number(test.questionScores?.[index]);
-         return {
-             question,
-             pointValue: Number.isFinite(pointValue) ? pointValue : null,
-             correctCount,
-             submittedCount: attemptedRows.length,
-             correctRate: attemptedRows.length ? (correctCount / attemptedRows.length) * 100 : null,
-         };
-     });
- 
-+    const configuredMaxScore = Number(test.maxScore);
-+    const summedQuestionScore = Array.isArray(test.questionScores)
-+        ? test.questionScores.reduce((sum, value) => sum + (Number.isFinite(Number(value)) ? Number(value) : 0), 0)
-+        : 0;
-+    const possibleScore = Number.isFinite(configuredMaxScore) && configuredMaxScore > 0
-+        ? configuredMaxScore
-+        : (summedQuestionScore > 0 ? summedQuestionScore : null);
-+
-     return {
-         classNameText: className,
-         testTitle: test.name || test.title || '-',
-         testDate: test.date || test.createdAt || test.updatedAt || null,
-         rankings,
-         scores,
-         stats: {
-             submittedCount: scores.length,
-             average,
-             maxScore: scores.length ? Math.max(...scores) : null,
-             minScore: scores.length ? Math.min(...scores) : null,
-+            possibleScore,
+     await logRef.update({
+         retry: {
+             attempted: true,
+             attemptedAt: FieldValue.serverTimestamp(),
+-            retryLogId: notificationLogId,
++            retryLogId: logId,
+             retrySuccessCount: fcmStats?.successCount || 0,
+             retryFailureCount: fcmStats?.failureCount || 0,
          },
-         questionStats,
+         successCount: FieldValue.increment(fcmStats?.successCount || 0),
+         failureCount: FieldValue.increment(-(fcmStats?.successCount || 0)),
+         failedTokenCount: FieldValue.increment(fcmStats?.failedTokenCount || 0),
+     });
+ 
+     return {
+         retryLogId: notificationLogId,
+-        targetCount,
++        targetCount: eligibleUids.length,
+         successCount: fcmStats?.successCount || 0,
+         failureCount: fcmStats?.failureCount || 0,
+     };
+ });
+ 
+-module.exports = { retryNotification };
+\ No newline at end of file
++module.exports = { retryNotification };
+diff --git a/functions/src/notify/__tests__/automaticFcmPath.test.js b/functions/src/notify/__tests__/automaticFcmPath.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..cad6a9031c978b94ca5dcf39fe10c0f6070fde81
+--- /dev/null
++++ b/functions/src/notify/__tests__/automaticFcmPath.test.js
+@@ -0,0 +1,232 @@
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const path = require('node:path');
++const test = require('node:test');
++const Module = require('node:module');
++
++const functionsRoot = path.resolve(__dirname, '../../..');
++
++const loadWithMocks = (relativePath, mocks) => {
++    const target = path.resolve(functionsRoot, relativePath);
++    delete require.cache[target];
++    const originalLoad = Module._load;
++    Module._load = function mockedLoad(request, parent, isMain) {
++        if (Object.prototype.hasOwnProperty.call(mocks, request)) return mocks[request];
++        return originalLoad.call(this, request, parent, isMain);
++    };
++    try {
++        return require(target);
++    } finally {
++        Module._load = originalLoad;
++    }
++};
++
++const firestoreFunctionsMock = {
++    firestore: {
++        document: (documentPath) => ({
++            onCreate: (handler) => ({ documentPath, run: handler }),
++        }),
++    },
++};
++
++test('notifyUsers creates one item per unique recipient and has exactly once automatic FCM path', async () => {
++    const writes = [];
++    const db = {
++        collection: (collectionName) => ({
++            doc: (uid) => ({
++                collection: (subcollection) => ({
++                    doc: () => ({ id: `item-${uid}`, path: `${collectionName}/${uid}/${subcollection}/item-${uid}` }),
++                }),
++            }),
++        }),
++        batch: () => ({
++            set: (ref, data) => writes.push({ ref, data }),
++            commit: async () => undefined,
++        }),
++    };
++    let directFcmCalls = 0;
++    const notifications = loadWithMocks('src/notify/notifications.js', {
++        'firebase-admin/firestore': { getFirestore: () => db, FieldValue: { serverTimestamp: () => 'timestamp' } },
++        './settings': {
++            isNotificationSendingEnabled: () => true,
++            notificationDisabledResult: () => ({ skipped: true }),
++        },
++        './fcm': { sendFcmToUsers: async () => { directFcmCalls += 1; } },
++    });
++
++    const result = await notifications.notifyUsers({
++        userIds: ['student', 'parent', 'student'],
++        payload: { type: 'GRADE_PUBLISHED', title: 'title', body: 'body' },
++        fcmData: { type: 'GRADE_PUBLISHED', refCollection: 'grades', refId: 'grade-1' },
++    });
++
++    assert.equal(writes.length, 2);
++    assert.deepEqual(Object.keys(result.notificationIds).sort(), ['parent', 'student']);
++    assert.equal(directFcmCalls, 0, 'notifyUsers must never dispatch FCM directly');
++    assert.equal(result.sent, false);
++});
++
++test('one item create invokes exactly once automatic FCM path and writes a delivery log', async () => {
++    const dispatches = [];
++    const logs = [];
++    const { handleNotificationItemCreated, onNotificationItemCreated } = loadWithMocks('src/triggers/notificationItems.js', {
++        'firebase-functions': firestoreFunctionsMock,
++        '../notify/fcm': { sendFcmToUsers: async () => undefined },
++        '../notify/notifications': { createNotificationLog: async () => undefined },
++    });
++    const logRef = { id: 'delivery-log' };
++
++    await handleNotificationItemCreated(
++        { data: () => ({ type: 'clinic', refCollection: 'clinicLogs', refId: 'clinic-1' }) },
++        { params: { uid: 'parent', notificationId: 'clinic-1_created' } },
++        {
++            createNotificationLog: async (input) => { logs.push(input); return logRef; },
++            sendFcmToUsers: async (...args) => { dispatches.push(args); },
++        },
++    );
++
++    assert.equal(onNotificationItemCreated.documentPath, 'notifications/{uid}/items/{notificationId}');
++    assert.equal(logs.length, 1);
++    assert.equal(dispatches.length, 1);
++    assert.deepEqual(dispatches[0][0], ['parent']);
++    assert.equal(dispatches[0][1].refCollection, 'clinicLogs');
++    assert.deepEqual(dispatches[0][2], {
++        notificationIds: { parent: 'clinic-1_created' },
++        logRef,
++    });
++});
++
++test('multiple recipient items each retain exactly once automatic FCM path', async () => {
++    const calls = [];
++    const { handleNotificationItemCreated } = loadWithMocks('src/triggers/notificationItems.js', {
++        'firebase-functions': firestoreFunctionsMock,
++        '../notify/fcm': { sendFcmToUsers: async () => undefined },
++        '../notify/notifications': { createNotificationLog: async () => undefined },
++    });
++    const dependencies = {
++        createNotificationLog: async () => ({ id: 'log' }),
++        sendFcmToUsers: async (uids) => calls.push(uids),
++    };
++
++    await Promise.all(['student', 'parent'].map((uid) => handleNotificationItemCreated(
++        { data: () => ({ type: 'BOARD_POST', refCollection: 'announcements', refId: 'post-1' }) },
++        { params: { uid, notificationId: 'boardPost_post-1' } },
++        dependencies,
++    )));
++
++    assert.deepEqual(calls, [['student'], ['parent']]);
++});
++
++test('manual retry executes its direct FCM path without creating notification items', async () => {
++    const fcmCalls = [];
++    let notificationItemCollectionAccesses = 0;
++    const deliveryRef = { id: 'failed-user' };
++    const logRef = {
++        get: async () => ({
++            exists: true,
++            data: () => ({
++                type: 'GRADE_PUBLISHED',
++                refCollection: 'grades',
++                refId: 'grade-1',
++                retry: {},
++            }),
++        }),
++        collection: (name) => {
++            assert.equal(name, 'deliveries');
++            return {
++                doc: () => deliveryRef,
++                where: () => ({
++                    limit: () => ({
++                        get: async () => ({ docs: [{ id: 'failed-user' }] }),
++                    }),
++                }),
++            };
++        },
++        update: async () => undefined,
++    };
++    const db = {
++        collection: (name) => {
++            if (name === 'notifications') return { doc: () => logRef };
++            if (name === 'users') {
++                return {
++                    doc: () => ({
++                        collection: (subcollection) => {
++                            if (subcollection === 'items') notificationItemCollectionAccesses += 1;
++                            assert.equal(subcollection, 'fcmTokens');
++                            return { limit: () => ({ get: async () => ({ empty: false }) }) };
++                        },
++                    }),
++                };
++            }
++            throw new Error(`unexpected collection: ${name}`);
++        },
++        batch: () => ({
++            delete: () => undefined,
++            set: () => undefined,
++            commit: async () => undefined,
++        }),
++    };
++    const functionsMock = {
++        https: {
++            onCall: (handler) => ({ run: handler }),
++            HttpsError: class HttpsError extends Error {},
++        },
++    };
++    const { retryNotification } = loadWithMocks('src/admin/retryNotification.js', {
++        'firebase-functions': functionsMock,
++        'firebase-admin/firestore': {
++            getFirestore: () => db,
++            FieldValue: { serverTimestamp: () => 'timestamp', increment: (value) => value },
++        },
++        '../_utils/assertAdmin': { assertAdmin: async () => undefined },
++        '../notify/fcm': {
++            sendFcmToUsers: async (...args) => {
++                fcmCalls.push(args);
++                return { successCount: 1, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] };
++            },
++        },
++        '../notify/settings': {
++            isNotificationSendingEnabled: () => true,
++            notificationDisabledResult: () => ({ skipped: true }),
++        },
++    });
++
++    const result = await retryNotification.run({ logId: 'delivery-log' }, {});
++
++    assert.equal(fcmCalls.length, 1);
++    assert.deepEqual(fcmCalls[0][0], ['failed-user']);
++    assert.equal(notificationItemCollectionAccesses, 0);
++    assert.equal(result.successCount, 1);
++});
++
++test('announcement and clinic producers retain deterministic item-only writes', () => {
++    const announcementSource = fs.readFileSync(path.resolve(functionsRoot, 'src/triggers/announcements.js'), 'utf8');
++    const clinicSource = fs.readFileSync(path.resolve(functionsRoot, 'clinicNotifications.js'), 'utf8');
++    assert.match(announcementSource, /doc\(`boardPost_\$\{refId\}`\)/);
++    assert.doesNotMatch(announcementSource, /sendFcmToUsers/);
++    assert.match(clinicSource, /notificationId = `\$\{logId\}_\$\{event\}\$\{completedSuffix\}`/);
++    assert.doesNotMatch(clinicSource, /sendFcmToUsers/);
++});
++
++test('feature flag remains default-off and FCM helper skips delivery', async () => {
++    const previousFlag = process.env.NOTIFICATION_SENDING_ENABLED;
++    delete process.env.NOTIFICATION_SENDING_ENABLED;
++    try {
++        const settings = loadWithMocks('src/notify/settings.js', {
++            'firebase-functions': { config: () => ({}) },
++        });
++        assert.equal(settings.isNotificationSendingEnabled(), false);
++
++        const fcm = loadWithMocks('src/notify/fcm.js', {
++            'firebase-admin/firestore': { getFirestore: () => ({}), FieldValue: {} },
++            'firebase-admin/messaging': { getMessaging: () => { throw new Error('messaging should not initialize'); } },
++            './settings': settings,
++        });
++        const result = await fcm.sendFcmToUsers(['student'], { type: 'TEST' });
++        assert.equal(result.skipped, true);
++        assert.equal(result.reason, 'notification_disabled');
++    } finally {
++        if (previousFlag === undefined) delete process.env.NOTIFICATION_SENDING_ENABLED;
++        else process.env.NOTIFICATION_SENDING_ENABLED = previousFlag;
++    }
++});
+diff --git a/functions/src/notify/notifications.js b/functions/src/notify/notifications.js
+index a10ed4dc8e4072e7e8dd84dcf9ce57194b88fe7b..983bd2ead5025dd6290a1b8f7b257f8c75e88784 100644
+--- a/functions/src/notify/notifications.js
++++ b/functions/src/notify/notifications.js
+@@ -1,28 +1,27 @@
+ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+-const { buildNotificationDocument, buildFcmDataPayload } = require('./builders');
+-const { sendFcmToUsers } = require('./fcm');
++const { buildNotificationDocument } = require('./builders');
+ const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
+ 
+ const db = getFirestore();
+ 
+ const createNotificationForUsers = async (userIds, payload) => {
+     if (!isNotificationSendingEnabled()) {
+         return { notificationIds: {}, targetUserCount: 0, ...notificationDisabledResult() };
+     }
+ 
+     const uniqueIds = [...new Set(userIds.filter(Boolean))];
+ 
+     if (uniqueIds.length === 0) {
+         return { notificationIds: {}, targetUserCount: 0 };
+     }
+ 
+     const notificationIds = {};
+     const batch = db.batch();
+ 
+     uniqueIds.forEach((uid) => {
+         const docRef = db.collection('notifications').doc(uid).collection('items').doc();
+         notificationIds[uid] = docRef.id;
+         batch.set(docRef, {
+             ...buildNotificationDocument(payload),
+             createdAt: FieldValue.serverTimestamp(),
+         });
+@@ -35,84 +34,61 @@ const createNotificationForUsers = async (userIds, payload) => {
+ const createNotificationLog = async ({ targetCount, payload, fcmData, logData = {} }) => {
+     if (!isNotificationSendingEnabled()) {
+         return null;
+     }
+ 
+     const logRef = db.collection('notifications').doc();
+     await logRef.set({
+         targetCount,
+         successCount: 0,
+         failureCount: 0,
+         failedTokenCount: 0,
+         sentAt: FieldValue.serverTimestamp(),
+         eventType: fcmData?.type || payload?.type || null,
+         type: fcmData?.type || payload?.type || null,
+         title: payload?.title || null,
+         body: payload?.body || null,
+         ref: payload?.ref || null,
+         refCollection: fcmData?.refCollection || null,
+         refId: fcmData?.refId || null,
+         studentId: fcmData?.studentId || payload?.studentId || null,
+         ...logData,
+     });
+     return logRef;
+ };
+ 
+-const notifyUsers = async ({ userIds, payload, fcmData, logData }) => {
++const notifyUsers = async ({ userIds, payload, fcmData }) => {
+     if (!isNotificationSendingEnabled()) {
+         console.debug('[notifications] sending skipped: notification_disabled');
+         return {
+             notificationIds: {},
+             targetCount: 0,
+             notificationLogId: null,
+             fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
+             ...notificationDisabledResult(),
+         };
+     }
+ 
+     const notificationPayload = {
+         ...payload,
+         refCollection: fcmData?.refCollection || payload?.refCollection || null,
+         refId: fcmData?.refId || payload?.refId || null,
+         studentId: fcmData?.studentId || payload?.studentId || payload?.authUid || null,
+     };
+     const { notificationIds, targetUserCount } = await createNotificationForUsers(userIds, notificationPayload);
+-    const logRef = await createNotificationLog({
+-        targetCount: targetUserCount,
+-        payload: notificationPayload,
+-        fcmData,
+-        logData,
+-    });
+-
+-    if (targetUserCount === 0) {
+-        return {
+-            notificationIds,
+-            targetCount: targetUserCount,
+-            notificationLogId: logRef?.id || null,
+-            fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
+-            success: true,
+-            sent: false,
+-        };
+-    }
+-
+-    const fcmStats = await sendFcmToUsers(
+-        userIds,
+-        buildFcmDataPayload(fcmData),
+-        { notificationIds, logRef },
+-    );
+ 
+     return {
+         notificationIds,
+         targetCount: targetUserCount,
+-        notificationLogId: logRef?.id || null,
+-        fcmStats,
+-        success: (fcmStats?.failureCount || 0) === 0,
+-        sent: (fcmStats?.successCount || 0) > 0,
++        notificationLogId: null,
++        fcmStats: { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [], failedEntries: [] },
++        success: true,
++        sent: false,
      };
  };
-diff --git a/src/domain/grade/gradePrint.logic.test.js b/src/domain/grade/gradePrint.logic.test.js
-index 6bf569b7d5b24c2a78bbcf27e2bb213ac094c6c2..05af5ca8caa559c9f50849a788cc081984d1f676 100644
---- a/src/domain/grade/gradePrint.logic.test.js
-+++ b/src/domain/grade/gradePrint.logic.test.js
-@@ -8,32 +8,62 @@ describe('grade print report resolver', () => {
-             { studentId: 'a', studentName: '가', score: 100 },
-             { studentId: 'b', studentName: '나', score: 95 },
-             { studentId: 'd', studentName: '라', score: 95 },
-         ]).map(({ studentId, score, rank }) => ({ studentId, score, rank }))).toEqual([
-             { studentId: 'a', score: 100, rank: 1 },
-             { studentId: 'b', score: 95, rank: 2 },
-             { studentId: 'd', score: 95, rank: 2 },
-             { studentId: 'c', score: 90, rank: 4 },
-         ]);
+ 
+ module.exports = {
+     createNotificationForUsers,
+     createNotificationLog,
+     notifyUsers,
+     isNotificationSendingEnabled,
+-};
+\ No newline at end of file
++};
+diff --git a/functions/src/triggers/notificationItems.js b/functions/src/triggers/notificationItems.js
+index 22f8e334d545a20bd23428f314c5470e21e74a4f..8141d7ce67a7e6b575f0229fa5dc15037604c4ea 100644
+--- a/functions/src/triggers/notificationItems.js
++++ b/functions/src/triggers/notificationItems.js
+@@ -1,22 +1,38 @@
+ const functions = require('firebase-functions');
+ const { sendFcmToUsers } = require('../notify/fcm');
++const { buildFcmDataPayload } = require('../notify/builders');
++const { createNotificationLog } = require('../notify/notifications');
+ 
+-const onNotificationItemCreated = functions.firestore
+-    .document('notifications/{uid}/items/{notificationId}')
+-    .onCreate(async (snapshot, context) => {
+-        const data = snapshot.data() || {};
+-        const { uid, notificationId } = context.params;
+-        if (data.fcmSent === true || data.skipFcm === true) return null;
++const handleNotificationItemCreated = async (snapshot, context, dependencies = {}) => {
++    const sendFcm = dependencies.sendFcmToUsers || sendFcmToUsers;
++    const createLog = dependencies.createNotificationLog || createNotificationLog;
++    const data = snapshot.data() || {};
++    const { uid, notificationId } = context.params;
+ 
+-        const category = data.category || data.payload?.category || data.type || '';
+-        await sendFcmToUsers([uid], {
+-            type: data.type || 'NOTIFICATION',
+-            category,
+-            refCollection: 'notifications',
+-            refId: 'center',
+-            url: '/home?tab=notifications',
+-        }, { notificationIds: { [uid]: notificationId } });
+-        return null;
++    const fcmData = {
++        type: data.type || 'NOTIFICATION',
++        category: data.category || data.payload?.category || data.type || '',
++        refCollection: data.refCollection || data.payload?.refCollection || 'notifications',
++        refId: data.refId || data.payload?.refId || 'center',
++        studentId: data.studentId || data.data?.studentId || null,
++    };
++    const logRef = await createLog({
++        targetCount: 1,
++        payload: data,
++        fcmData,
++        logData: { recipientUid: uid, notificationId },
      });
  
-     test('resolves scores, statistics, and real question accuracy without truncating rankings', () => {
-         const students = Array.from({ length: 12 }, (_, index) => ({ id: String(index), name: `학생${index}` }));
-         const grades = Object.fromEntries(students.map((student, index) => [student.id, {
-             exam: { answers: { 1: index < 9 ? 1 : 2, 2: index < 6 ? 1 : 2 } },
-         }]));
-         const payload = buildGradePrintPayload({
-             students,
-             grades,
-             className: 'A반',
-             test: { id: 'exam', name: '정기 테스트', date: '2026-08-16', maxScore: 20, totalQuestions: 2, questionScores: [10, 10] },
-         });
- 
-         expect(payload.rankings).toHaveLength(12);
-         expect(payload.rankings.map((row) => row.score)).toEqual([...payload.scores].sort((a, b) => b - a));
--        expect(payload.stats).toEqual({ submittedCount: 12, average: 12.5, maxScore: 20, minScore: 0 });
-+        expect(payload.stats).toEqual({ submittedCount: 12, average: 12.5, maxScore: 20, minScore: 0, possibleScore: 20 });
-         expect(payload.questionStats).toEqual([
-             { question: 1, pointValue: 10, correctCount: 9, submittedCount: 12, correctRate: 75 },
-             { question: 2, pointValue: 10, correctCount: 6, submittedCount: 12, correctRate: 50 },
-         ]);
-     });
- });
+-module.exports = { onNotificationItemCreated };
++    await sendFcm(
++        [uid],
++        buildFcmDataPayload(fcmData),
++        { notificationIds: { [uid]: notificationId }, logRef },
++    );
++    return null;
++};
 +
-+describe.each([
-+    ['small', 8, 10],
-+    ['current', 12, 13],
-+    ['medium', 30, 20],
-+    ['large', 42, 40],
-+])('%s adaptive report dataset', (_label, studentCount, questionCount) => {
-+    test('preserves every attempted student and question at scale', () => {
-+        const students = Array.from({ length: studentCount + 1 }, (_, index) => ({ id: `s${index}`, name: `학생 ${index}` }));
-+        const questionScores = Array(questionCount).fill(1);
-+        const grades = Object.fromEntries(students.map((student, studentIndex) => {
-+            if (studentIndex === studentCount) return [student.id, { exam: { score: '미응시' } }];
-+            const correctQuestions = studentIndex === studentCount - 1 ? 0 : studentCount - studentIndex;
-+            const answers = Object.fromEntries(Array.from({ length: questionCount }, (_, index) => [index + 1, index < Math.min(correctQuestions, questionCount) ? 1 : 2]));
-+            return [student.id, { exam: { answers } }];
-+        }));
-+        const payload = buildGradePrintPayload({ students, grades, test: { id: 'exam', totalQuestions: questionCount, questionScores } });
++const onNotificationItemCreated = functions.firestore
++    .document('notifications/{uid}/items/{notificationId}')
++    .onCreate(handleNotificationItemCreated);
 +
-+        expect(payload.rankings).toHaveLength(studentCount);
-+        expect(payload.questionStats.map((row) => row.question)).toEqual(Array.from({ length: questionCount }, (_, index) => index + 1));
-+        expect(payload.rankings.map((row) => row.score)).toEqual([...payload.scores].sort((a, b) => b - a));
-+        expect(payload.rankings.at(-1).score).toBe(0);
-+        expect(payload.stats.submittedCount).toBe(studentCount);
-+        expect(payload.stats.maxScore).toBe(Math.min(studentCount, questionCount));
-+        expect(payload.stats.minScore).toBe(0);
-+        expect(payload.stats.possibleScore).toBe(questionCount);
-+        expect(payload.questionStats[0].correctCount).toBe(studentCount - 1);
-+        expect(payload.rankings.map((row) => row.rank)).toEqual(buildCompetitionRanking(payload.rankings).map((row) => row.rank));
-+    });
-+});
-diff --git a/src/pages/GradeManagement.jsx b/src/pages/GradeManagement.jsx
-index a4949f7021092f4f05d97e55d6e22c1e2aa6aae3..c22bfe164609d379acdf3103d0464489166b387f 100644
---- a/src/pages/GradeManagement.jsx
-+++ b/src/pages/GradeManagement.jsx
-@@ -502,51 +502,51 @@ export default function GradeManagement({
-             {selectedTest && (
-                 <TestResultTable
-                     isOpen={isGradeInputModalOpen}
-                     onClose={handleCloseGradeInput}
-                     test={selectedTest}
-                     studentsData={displayRosterForTest}
-                     handleUpdateGrade={handleUpdateGrade}
-                     grades={grades}
-                     closures={closures}
-                     classId={selectedClassId || selectedTest?.classId}
-                 />
-             )}
- 
-             {selectedTest && isStatsModalOpen && (
-                 <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setIsStatsModalOpen(false)}>
-                     <div className="bg-white rounded-xl shadow-xl w-full max-w-[1400px] max-h-[95vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
-                         <div className="flex items-center justify-between mb-4">
-                             <h3 className="text-lg font-bold">{selectedTest.name} 시험결과 인쇄</h3>
-                             <div className="flex gap-2 print-modal-actions">
-                                <label className="flex items-center gap-1 text-sm">
-                                     <input
-                                         type="checkbox"
-                                         checked={compactPrint}
-                                         onChange={(event) => setCompactPrint(event.target.checked)}
-                                     />
--                                    축소 인쇄
-+                                    미리보기 축소
-                                 </label>
-                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={handlePrintClick}>인쇄</button>
-                                 <button className="px-3 py-1.5 text-sm border rounded" onClick={() => setIsStatsModalOpen(false)}>닫기</button>
-                             </div>
-                         </div>
-                         <div className="mt-3 border rounded-lg p-2 bg-white overflow-auto" style={{ maxHeight: '75vh' }}>
-                             <GradePrintDocument
-                                 ref={printRef}
-                                 classNameText={printPayload.classNameText}
-                                 testTitle={printPayload.testTitle}
-                                 testDateText={formatDateText(printPayload.testDate)}
-                                 stats={printPayload.stats}
-                                 scores={printPayload.scores}
-                                 rankings={printPayload.rankings}
-                                 questionStats={printPayload.questionStats}
-                                 printScale={compactPrint ? 0.92 : 1}
-                             />
-                         </div>
-                     </div>
-                 </div>
-             )}
- 
-             {/* 엑셀 파일 업로드 Input */}
-             <input
-                 type="file"
++module.exports = { handleNotificationItemCreated, onNotificationItemCreated };
