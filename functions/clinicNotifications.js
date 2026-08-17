@@ -6,7 +6,8 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-const { getRecipientsForStudent } = require('./src/notify/recipients');
+const { createStudentRecipientResolver } = require('./src/notify/recipients');
+const { createUserIdentityResolver } = require('./src/identity/resolveUserIdentity');
 
 const pick = (obj, keys) => {
   const out = {};
@@ -129,7 +130,9 @@ exports.onClinicLogsWriteCreateNotifications = functions
     const studentDocId = (after || before || {}).studentId || null;
 
     // 수신자 목록 만들기
-    const recipients = await getRecipientsForStudent(studentDocId);
+    const resolveIdentity = createUserIdentityResolver({ db });
+    const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
+    const recipients = await getRecipients(studentDocId);
     const receivers = recipients
       ? [...new Set([recipients.studentUid, ...recipients.parentUids].filter(Boolean))]
       : [];

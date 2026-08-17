@@ -1,6 +1,7 @@
 const functions = require('firebase-functions');
 const { FieldValue, getFirestore } = require('firebase-admin/firestore');
-const { getRecipientsForStudent } = require('../notify/recipients');
+const { createStudentRecipientResolver } = require('../notify/recipients');
+const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
 
 const db = getFirestore();
 const TYPE = 'BOARD_POST';
@@ -54,9 +55,11 @@ const onAnnouncementCreated = functions.firestore
             ...classTargetStudents,
         ])];
         const recipientSet = new Set();
+        const resolveIdentity = createUserIdentityResolver({ db });
+        const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
 
         for (const studentUid of targetStudentUids) {
-            const recipients = await getRecipientsForStudent(studentUid);
+            const recipients = await getRecipients(studentUid);
             if (!recipients) {
                 continue;
             }

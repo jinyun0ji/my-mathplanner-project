@@ -1,5 +1,6 @@
 const functions = require('firebase-functions');
-const { getRecipientsForStudent } = require('../notify/recipients');
+const { createStudentRecipientResolver } = require('../notify/recipients');
+const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
 const { notifyUsers } = require('../notify/notifications');
 const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
@@ -116,8 +117,10 @@ const onGradeWritten = functions.firestore
             return notificationDisabledResult();
         }
 
+        const resolveIdentity = createUserIdentityResolver({ db });
+        const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
-        const recipients = await getRecipientsForStudent(authUid);
+        const recipients = await getRecipients(authUid);
 
         if (!recipients) {
             await notifyUsers({

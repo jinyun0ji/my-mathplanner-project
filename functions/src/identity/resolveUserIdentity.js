@@ -1,10 +1,11 @@
 const { getFirestore } = require('firebase-admin/firestore');
+const { getAuth } = require('firebase-admin/auth');
 
 const LEGACY_ALIAS_FIELDS = ['authUid', 'uid', 'userUid', 'studentUid', 'studentAuthUid'];
 
 const clean = (value) => String(value || '').trim();
 
-const identityFromProfile = (snapshot, { indexedAuthUid = '', matchedField = '', matchedKey = '' } = {}) => {
+const identityFromProfile = (snapshot, { indexedAuthUid = '', matchedField = '', matchedKey = '', verifiedEqualId = false } = {}) => {
     if (!snapshot?.exists) return null;
     const data = snapshot.data() || {};
     const profileDocId = snapshot.id || clean(snapshot.ref?.id);
@@ -14,8 +15,8 @@ const identityFromProfile = (snapshot, { indexedAuthUid = '', matchedField = '',
         || clean(data.userUid)
         || clean(data.studentAuthUid)
         || (matchedField === 'authUid' ? clean(matchedKey) : '')
-        // Old profiles whose document ID was the Auth UID have no separate authUid field.
-        || (profileDocId === clean(matchedKey) ? profileDocId : '');
+        // Only an Auth lookup (or an index hit above) may prove the legacy equal-ID shape.
+        || (verifiedEqualId && profileDocId === clean(matchedKey) ? profileDocId : '');
 
     if (!authUid || !profileDocId) return null;
     const role = clean(data.role) || null;
@@ -27,7 +28,17 @@ const identityFromProfile = (snapshot, { indexedAuthUid = '', matchedField = '',
     };
 };
 
-const createUserIdentityResolver = ({ db = getFirestore(), cache = new Map() } = {}) => {
+const createUserIdentityResolver = ({ db = getFirestore(), auth = getAuth(), cache = new Map() } = {}) => {
+    const isFirebaseAuthUid = async (uid) => {
+        try {
+            await auth.getUser(uid);
+            return true;
+        } catch (error) {
+            if (error?.code === 'auth/user-not-found') return false;
+            throw error;
+        }
+    };
+
     const resolveUncached = async (rawKey) => {
         const key = clean(rawKey);
         if (!key) return null;
@@ -45,7 +56,10 @@ const createUserIdentityResolver = ({ db = getFirestore(), cache = new Map() } =
 
         // The key may instead be the profile/student document ID.
         const directProfile = await db.collection('users').doc(key).get();
-        const directIdentity = identityFromProfile(directProfile, { matchedKey: key });
+        const explicitDirectIdentity = identityFromProfile(directProfile, { matchedKey: key });
+        if (explicitDirectIdentity) return explicitDirectIdentity;
+        const verifiedEqualId = directProfile.exists && await isFirebaseAuthUid(key);
+        const directIdentity = identityFromProfile(directProfile, { matchedKey: key, verifiedEqualId });
         if (directIdentity) return directIdentity;
 
         // Queries are a last-resort compatibility path and stop at the first match.
@@ -67,7 +81,8 @@ const createUserIdentityResolver = ({ db = getFirestore(), cache = new Map() } =
     };
 };
 
-const resolveUserIdentity = createUserIdentityResolver();
+// Convenience only: deliberately creates a fresh resolver so no cache survives a call.
+const resolveUserIdentity = (rawKey, options) => createUserIdentityResolver(options)(rawKey);
 
 module.exports = {
     LEGACY_ALIAS_FIELDS,

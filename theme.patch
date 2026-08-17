@@ -1,8 +1,8 @@
 diff --git a/functions/clinicNotifications.js b/functions/clinicNotifications.js
-index 8a2bf2438b4c3e534212f2327c5c270ace7926c0..374eb6a7dea0c2523d3d6e433888e14cb0a13860 100644
+index 374eb6a7dea0c2523d3d6e433888e14cb0a13860..8c98a11e5f4aef373d2f9312f7a5089501a4019f 100644
 --- a/functions/clinicNotifications.js
 +++ b/functions/clinicNotifications.js
-@@ -1,94 +1,74 @@
+@@ -1,34 +1,35 @@
  const functions = require('firebase-functions');
  const admin = require('firebase-admin');
  
@@ -11,7 +11,9 @@ index 8a2bf2438b4c3e534212f2327c5c270ace7926c0..374eb6a7dea0c2523d3d6e433888e14c
  }
  
  const db = admin.firestore();
-+const { getRecipientsForStudent } = require('./src/notify/recipients');
+-const { getRecipientsForStudent } = require('./src/notify/recipients');
++const { createStudentRecipientResolver } = require('./src/notify/recipients');
++const { createUserIdentityResolver } = require('./src/identity/resolveUserIdentity');
  
  const pick = (obj, keys) => {
    const out = {};
@@ -37,68 +39,7 @@ index 8a2bf2438b4c3e534212f2327c5c270ace7926c0..374eb6a7dea0c2523d3d6e433888e14c
    };
  }
  
- // upsert notification item
- async function upsertNotificationItem({ userUid, notificationId, payload }) {
-   const itemRef = db.collection('notifications').doc(userUid).collection('items').doc(notificationId);
-   await itemRef.set(payload, { merge: true });
- 
-   // meta 문서가 이미 존재/사용 중이라면 업데이트(없어도 문제 없게 merge)
-   const metaRef = db.collection('notifications').doc(userUid).collection('meta').doc('meta');
-   await metaRef.set(
-     {
-       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-     },
-     { merge: true },
-   );
- }
- 
--// get student authUid by studentDocId
--async function getStudentAuthUid(studentDocId) {
--  if (!studentDocId) return null;
--  const snap = await db.collection('users').doc(studentDocId).get();
--  if (!snap.exists) return null;
--  const data = snap.data() || {};
--  return data.authUid || null;
--}
--
--// find parent authUids by studentDocId (parent docs are users/{authUid})
--async function getParentAuthUidsByStudentDocId(studentDocId) {
--  if (!studentDocId) return [];
--  const q = await db
--    .collection('users')
--    .where('role', '==', 'parent')
--    .where('studentIds', 'array-contains', studentDocId)
--    .get();
--
--  return q.docs.map((d) => d.id).filter(Boolean);
--}
--
- // Determine event type from before/after
- function resolveClinicEvent(before, after) {
-   // created
-   if (!before && after) return 'created';
-   // deleted
-   if (before && !after) return 'deleted';
-   // updated
-   return 'updated';
- }
- 
- // Only notify on meaningful updates
- function isMeaningfulClinicUpdate(before, after) {
-   // compare only key fields that matter to parents/students
-   const keys = ['date', 'checkIn', 'checkOut', 'tutor', 'comment', 'notes', 'status'];
-   const b = pick(before, keys);
-   const a = pick(after, keys);
-   return !isSame(b, a);
- }
- 
- // Create title/body based on event+fields
- function makeClinicMessage(event, before, after) {
-   const src = after || before || {};
-   const date = src.date || '';
-   const checkIn = src.checkIn || '';
-   const checkOut = src.checkOut || '';
-@@ -127,80 +107,80 @@ function makeClinicMessage(event, before, after) {
+@@ -107,51 +108,53 @@ function makeClinicMessage(event, before, after) {
  
  exports.onClinicLogsWriteCreateNotifications = functions
    .region('us-central1')
@@ -124,14 +65,13 @@ index 8a2bf2438b4c3e534212f2327c5c270ace7926c0..374eb6a7dea0c2523d3d6e433888e14c
      const studentDocId = (after || before || {}).studentId || null;
  
      // 수신자 목록 만들기
--    const studentAuthUid = await getStudentAuthUid(studentDocId);
--    const parentAuthUids = await getParentAuthUidsByStudentDocId(studentDocId);
--
--    const receivers = [studentAuthUid, ...parentAuthUids].filter(Boolean);
-+    const recipients = await getRecipientsForStudent(studentDocId);
-+    const receivers = recipients
-+      ? [...new Set([recipients.studentUid, ...recipients.parentUids].filter(Boolean))]
-+      : [];
+-    const recipients = await getRecipientsForStudent(studentDocId);
++    const resolveIdentity = createUserIdentityResolver({ db });
++    const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
++    const recipients = await getRecipients(studentDocId);
+     const receivers = recipients
+       ? [...new Set([recipients.studentUid, ...recipients.parentUids].filter(Boolean))]
+       : [];
  
      if (receivers.length === 0) {
        console.warn('[clinicNotifications] no receivers', { logId, studentDocId });
@@ -154,466 +94,585 @@ index 8a2bf2438b4c3e534212f2327c5c270ace7926c0..374eb6a7dea0c2523d3d6e433888e14c
        body,
        refId: logId,
        data: {
-         studentId: studentDocId,
-         date: (after || before || {}).date || null,
-         checkIn: (after || before || {}).checkIn || null,
-         checkOut: (after || before || {}).checkOut || null,
-         tutor: (after || before || {}).tutor || null,
-       },
-     });
+diff --git a/functions/src/identity/__tests__/resolveUserIdentity.test.js b/functions/src/identity/__tests__/resolveUserIdentity.test.js
+index fd10dba3e608add592295b22ee4c71c75f6027a8..6f090696a833f58903e9c47518a41632c1a66507 100644
+--- a/functions/src/identity/__tests__/resolveUserIdentity.test.js
++++ b/functions/src/identity/__tests__/resolveUserIdentity.test.js
+@@ -1,125 +1,187 @@
+ const assert = require('node:assert/strict');
+ const test = require('node:test');
+ const { initializeApp } = require('firebase-admin/app');
  
-     // fan-out write
-     await Promise.all(
-       receivers.map((userUid) =>
-         upsertNotificationItem({
-           userUid,
-           notificationId,
-           payload,
-         }),
-       ),
-     );
+ initializeApp({ projectId: 'identity-resolver-test' });
  
-     console.log('[clinicNotifications] notified', {
-       logId,
-       event,
-       receiversCount: receivers.length,
-       receivers,
-       studentDocId,
-     });
- 
-     return null;
--  });
-\ No newline at end of file
-+  });
-diff --git a/functions/src/clinic/createClinicReservation.js b/functions/src/clinic/createClinicReservation.js
-index 68cf4d2bc52ebab2bf01861c20eb37eb1db748e5..4f809911d314bb12610aa84dfbbdd4c4c00d1ead 100644
---- a/functions/src/clinic/createClinicReservation.js
-+++ b/functions/src/clinic/createClinicReservation.js
-@@ -1,124 +1,92 @@
- const functions = require('firebase-functions');
- const { getFirestore, FieldValue } = require('firebase-admin/firestore');
- const { ROLE, isStaffGroupRole } = require('../_utils/roles');
  const {
-     requireString,
-     assertRequired,
-     normalizeStudentDocId,
-     normalizeClassId,
- } = require('../_utils/ids');
-+const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
-+
-+const buildReservationIdentity = ({ resolvedStudentAuthUid, requestAuthUid }) => ({
-+    authUid: String(resolvedStudentAuthUid || requestAuthUid || '').trim() || null,
+     createUserIdentityResolver,
+ } = require('../resolveUserIdentity');
+ const { createStudentRecipientResolver } = require('../../notify/recipients');
+ const { buildReservationIdentity } = require('../../clinic/createClinicReservation');
++const { resolveChatRecipientAuthUids } = require('../../triggers/chatMessages');
+ 
+ const profiles = {
+     'legacy-staff': { role: 'staff' },
+     'student-doc-1': { role: 'student', authUid: 'auth-student-1' },
++    'student-doc-2': { role: 'student', authUid: 'auth-student-2' },
+     'parent-doc-1': { role: 'parent', authUid: 'auth-parent-1', studentIds: ['student-doc-1'] },
+     'duplicate-parent': { role: 'parent', authUid: 'auth-student-1', studentIds: ['student-doc-1'] },
++    'unlinked-parent-doc': { role: 'parent', studentIds: ['student-doc-1'] },
++    'legacy-parent-auth-uid': { role: 'parent', studentIds: ['student-doc-2'] },
+ };
+ 
++const createAuth = (validUids = ['legacy-staff']) => ({
++    getUser: async (uid) => {
++        if (validUids.includes(uid)) return { uid };
++        const error = new Error('user not found');
++        error.code = 'auth/user-not-found';
++        throw error;
++    },
 +});
- 
- const createClinicReservation = functions
-     .region('us-central1')
-     .https.onCall(async (data, context) => {
-     if (!context?.auth?.uid) {
-         throw new functions.https.HttpsError('unauthenticated', '로그인이 필요합니다.');
-     }
- 
-     const db = getFirestore();
-     const authUid = context.auth.uid;
-+    const resolveIdentity = createUserIdentityResolver({ db });
- 
--    const resolveCallerRole = async () => {
--        // 1) B안: userAuthIndex/{authUid} -> users/{userDocId}
--        try {
--            const idxSnap = await db.collection('userAuthIndex').doc(authUid).get();
--            const userDocId = idxSnap.exists ? String(idxSnap.data()?.userDocId || '').trim() : '';
--            if (userDocId) {
--                const uSnap = await db.collection('users').doc(userDocId).get();
--                if (uSnap.exists) return uSnap.data()?.role || null;
--            }
--        } catch (e) {
--            console.warn('[createClinicReservation] userAuthIndex lookup failed', e);
--        }
--
--        // 2) 레거시: users/{authUid}
--        try {
--            const uSnap = await db.collection('users').doc(authUid).get();
--            if (uSnap.exists) return uSnap.data()?.role || null;
--        } catch (e) {
--            console.warn('[createClinicReservation] users/{uid} lookup failed', e);
--        }
--
--        // 3) 최후: users where authUid == uid
--        try {
--            const qSnap = await db.collection('users').where('authUid', '==', authUid).limit(1).get();
--            if (!qSnap.empty) return qSnap.docs[0].data()?.role || null;
--        } catch (e) {
--            console.warn('[createClinicReservation] users query authUid lookup failed', e);
--        }
--
--        return null;
--    };
--
--    const role = await resolveCallerRole();
-+    const role = (await resolveIdentity(authUid))?.role || null;
-     if (!isStaffGroupRole(role) && role !== ROLE.TEACHER) {
-         throw new functions.https.HttpsError('permission-denied', '직원/조교만 예약을 생성할 수 있습니다.');
-     }
- 
-     const studentDocId = normalizeStudentDocId(data);
-     const classId = normalizeClassId(data);
-     const date = requireString(data, 'date');
-     const timeSlot = requireString(data, 'timeSlot') || requireString(data, 'plannedTime');
- 
-     const missing = [];
-     if (!studentDocId) missing.push('studentDocId');
-     if (!classId) missing.push('classId');
-     if (!date) missing.push('date');
-     if (!timeSlot) missing.push('timeSlot');
- 
-     assertRequired(missing);
- 
--    let resolvedStudentAuthUid = data?.authUid ? String(data.authUid).trim() : '';
--    if (!resolvedStudentAuthUid) {
--        try {
--            const studentSnap = await db.collection('users').doc(studentDocId).get();
--            if (studentSnap.exists) {
--                resolvedStudentAuthUid = String(studentSnap.data()?.authUid || '').trim();
--            }
--        } catch (e) {
--            console.warn('[createClinicReservation] users/{studentDocId} authUid lookup failed', {
--                studentDocId,
--                message: e?.message || e,
--            });
--        }
--    }
-+    const studentIdentity = await resolveIdentity(studentDocId);
-+    const resolvedStudentAuthUid = studentIdentity?.role === ROLE.STUDENT ? studentIdentity.authUid : '';
-+    const requestIdentity = !resolvedStudentAuthUid && data?.authUid
-+        ? await resolveIdentity(data.authUid)
-+        : null;
-+    const requestAuthUid = requestIdentity?.role === ROLE.STUDENT
-+        && requestIdentity.studentDocId === studentDocId
-+        ? requestIdentity.authUid
-+        : '';
- 
-     const col = db.collection('clinicReservations');
- 
-     let reservationId = '';
-     await db.runTransaction(async (tx) => {
-         const dupQ = await tx.get(
-             col
-                 .where('studentDocId', '==', studentDocId)
-                 .where('date', '==', date)
-                 .where('status', 'in', ['reserved', 'booked', 'pending'])
-                 .limit(1)
-         );
- 
-         if (!dupQ.empty) {
-             throw new functions.https.HttpsError('already-exists', '이미 해당 날짜에 예약이 있습니다.');
-         }
- 
-         const ref = col.doc();
-         reservationId = ref.id;
-         tx.set(ref, {
-             studentDocId,
--            authUid: resolvedStudentAuthUid || null,
--            authUid: data?.authUid ? String(data.authUid).trim() : null,
-+            ...buildReservationIdentity({ resolvedStudentAuthUid, requestAuthUid }),
-             studentUid: data?.studentUid ? String(data.studentUid).trim() : null,
-             classId,
-             date,
-             plannedTime: timeSlot,
-             status: 'pending',
-             legacyPayload: data,
-             createdAt: FieldValue.serverTimestamp(),
-             updatedAt: FieldValue.serverTimestamp(),
-             createdBy: context.auth.uid,
-             updatedBy: context.auth.uid,
-         });
-     });
- 
-     return { ok: true, id: reservationId };
++
+ const snapshot = (id, data) => ({
+     id,
+     exists: Boolean(data),
+     data: () => data,
+     ref: { id },
  });
  
--module.exports = { createClinicReservation };
-\ No newline at end of file
-+module.exports = { buildReservationIdentity, createClinicReservation };
-diff --git a/functions/src/identity/__tests__/resolveUserIdentity.test.js b/functions/src/identity/__tests__/resolveUserIdentity.test.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..fd10dba3e608add592295b22ee4c71c75f6027a8
---- /dev/null
-+++ b/functions/src/identity/__tests__/resolveUserIdentity.test.js
-@@ -0,0 +1,125 @@
-+const assert = require('node:assert/strict');
-+const test = require('node:test');
-+const { initializeApp } = require('firebase-admin/app');
-+
-+initializeApp({ projectId: 'identity-resolver-test' });
-+
-+const {
-+    createUserIdentityResolver,
-+} = require('../resolveUserIdentity');
-+const { createStudentRecipientResolver } = require('../../notify/recipients');
-+const { buildReservationIdentity } = require('../../clinic/createClinicReservation');
-+
-+const profiles = {
-+    'legacy-staff': { role: 'staff' },
-+    'student-doc-1': { role: 'student', authUid: 'auth-student-1' },
-+    'parent-doc-1': { role: 'parent', authUid: 'auth-parent-1', studentIds: ['student-doc-1'] },
-+    'duplicate-parent': { role: 'parent', authUid: 'auth-student-1', studentIds: ['student-doc-1'] },
-+};
-+
-+const snapshot = (id, data) => ({
-+    id,
-+    exists: Boolean(data),
-+    data: () => data,
-+    ref: { id },
-+});
-+
-+const createDb = () => {
-+    const reads = [];
-+    const db = {
-+        reads,
-+        collection(name) {
-+            if (name === 'userAuthIndex') {
-+                return { doc: (key) => ({ get: async () => {
-+                    reads.push(`index:${key}`);
-+                    const ids = { 'auth-student-1': 'student-doc-1', 'auth-parent-1': 'parent-doc-1' };
-+                    return snapshot(key, ids[key] ? { userDocId: ids[key] } : null);
-+                } }) };
-+            }
-+            if (name !== 'users') throw new Error(`unexpected collection ${name}`);
-+            return {
-+                doc: (key) => ({ get: async () => {
-+                    reads.push(`user:${key}`);
-+                    return snapshot(key, profiles[key]);
-+                } }),
-+                where(field, operator, key) {
-+                    const filters = [{ field, operator, key }];
-+                    const query = {
-+                        where(nextField, nextOperator, nextKey) {
-+                            filters.push({ field: nextField, operator: nextOperator, key: nextKey });
-+                            return query;
-+                        },
-+                        limit: () => query,
-+                        get: async () => {
-+                            const matches = Object.entries(profiles).filter(([, data]) => filters.every((filter) => (
-+                                filter.operator === 'array-contains'
-+                                    ? data[filter.field]?.includes(filter.key)
-+                                    : data[filter.field] === filter.key
-+                            )));
-+                            return {
-+                                empty: matches.length === 0,
-+                                docs: matches.map(([id, data]) => snapshot(id, data)),
-+                            };
-+                        },
-+                    };
-+                    return query;
-+                },
-+            };
-+        },
+ const createDb = () => {
+     const reads = [];
++    const state = {
++        profiles: structuredClone(profiles),
++        indexes: { 'auth-student-1': 'student-doc-1', 'auth-student-2': 'student-doc-2', 'auth-parent-1': 'parent-doc-1' },
 +    };
-+    return db;
-+};
-+
-+test('resolves legacy equal IDs and distinct student/parent Auth UIDs', async () => {
+     const db = {
+         reads,
++        state,
+         collection(name) {
+             if (name === 'userAuthIndex') {
+                 return { doc: (key) => ({ get: async () => {
+                     reads.push(`index:${key}`);
+-                    const ids = { 'auth-student-1': 'student-doc-1', 'auth-parent-1': 'parent-doc-1' };
+-                    return snapshot(key, ids[key] ? { userDocId: ids[key] } : null);
++                    return snapshot(key, state.indexes[key] ? { userDocId: state.indexes[key] } : null);
+                 } }) };
+             }
+             if (name !== 'users') throw new Error(`unexpected collection ${name}`);
+             return {
+                 doc: (key) => ({ get: async () => {
+                     reads.push(`user:${key}`);
+-                    return snapshot(key, profiles[key]);
++                    return snapshot(key, state.profiles[key]);
+                 } }),
+                 where(field, operator, key) {
+                     const filters = [{ field, operator, key }];
+                     const query = {
+                         where(nextField, nextOperator, nextKey) {
+                             filters.push({ field: nextField, operator: nextOperator, key: nextKey });
+                             return query;
+                         },
+                         limit: () => query,
+                         get: async () => {
+-                            const matches = Object.entries(profiles).filter(([, data]) => filters.every((filter) => (
++                            const matches = Object.entries(state.profiles).filter(([, data]) => filters.every((filter) => (
+                                 filter.operator === 'array-contains'
+                                     ? data[filter.field]?.includes(filter.key)
+                                     : data[filter.field] === filter.key
+                             )));
+                             return {
+                                 empty: matches.length === 0,
+                                 docs: matches.map(([id, data]) => snapshot(id, data)),
+                             };
+                         },
+                     };
+                     return query;
+                 },
+             };
+         },
+     };
+     return db;
+ };
+ 
+ test('resolves legacy equal IDs and distinct student/parent Auth UIDs', async () => {
+     const db = createDb();
+-    const resolve = createUserIdentityResolver({ db });
++    const resolve = createUserIdentityResolver({ db, auth: createAuth() });
+ 
+     assert.deepEqual(await resolve('legacy-staff'), {
+         authUid: 'legacy-staff', profileDocId: 'legacy-staff', role: 'staff', studentDocId: null,
+     });
+     const expectedStudent = {
+         authUid: 'auth-student-1', profileDocId: 'student-doc-1', role: 'student', studentDocId: 'student-doc-1',
+     };
+     assert.deepEqual(await resolve('student-doc-1'), expectedStudent);
+     assert.deepEqual(await resolve('auth-student-1'), expectedStudent);
+     assert.deepEqual(await resolve('auth-parent-1'), {
+         authUid: 'auth-parent-1', profileDocId: 'parent-doc-1', role: 'parent', studentDocId: null,
+     });
+ });
+ 
+ test('normalizes student and parent recipients to unique Auth UIDs', async () => {
+     const db = createDb();
+-    const getRecipients = createStudentRecipientResolver({ database: db });
++    const resolveIdentity = createUserIdentityResolver({ db, auth: createAuth() });
++    const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
+ 
+     assert.deepEqual(await getRecipients('student-doc-1'), {
+         studentUid: 'auth-student-1',
+         parentUids: ['auth-parent-1'],
+         studentIdentity: {
+             authUid: 'auth-student-1', profileDocId: 'student-doc-1', role: 'student', studentDocId: 'student-doc-1',
+         },
+     });
+     assert.equal((await getRecipients('auth-student-1')).studentUid, 'auth-student-1');
+ });
+ 
+ test('does not pass an unresolved key through as an Auth UID and caches repeated lookup', async () => {
+     const db = createDb();
+-    const resolve = createUserIdentityResolver({ db });
++    const resolve = createUserIdentityResolver({ db, auth: createAuth() });
+     assert.equal(await resolve('invalid-key'), null);
+     const readsAfterFirstCall = db.reads.length;
+     assert.equal(await resolve('invalid-key'), null);
+     assert.equal(db.reads.length, readsAfterFirstCall);
+ });
+ 
++test('a fresh resolver does not inherit an earlier unresolved cache entry', async () => {
 +    const db = createDb();
-+    const resolve = createUserIdentityResolver({ db });
++    const auth = createAuth();
++    const firstInvocationResolver = createUserIdentityResolver({ db, auth });
++    assert.equal(await firstInvocationResolver('new-auth-uid'), null);
 +
-+    assert.deepEqual(await resolve('legacy-staff'), {
-+        authUid: 'legacy-staff', profileDocId: 'legacy-staff', role: 'staff', studentDocId: null,
++    db.state.profiles['new-profile-doc'] = { role: 'student', authUid: 'new-auth-uid' };
++    db.state.indexes['new-auth-uid'] = 'new-profile-doc';
++    const secondInvocationResolver = createUserIdentityResolver({ db, auth });
++    assert.deepEqual(await secondInvocationResolver('new-auth-uid'), {
++        authUid: 'new-auth-uid', profileDocId: 'new-profile-doc', role: 'student', studentDocId: 'new-profile-doc',
 +    });
-+    const expectedStudent = {
-+        authUid: 'auth-student-1', profileDocId: 'student-doc-1', role: 'student', studentDocId: 'student-doc-1',
++});
++
++test('excludes a parent profile whose Auth UID cannot be proven', async () => {
++    const db = createDb();
++    const resolveIdentity = createUserIdentityResolver({ db, auth: createAuth() });
++    const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
++    const recipients = await getRecipients('student-doc-1');
++    assert.deepEqual(recipients.parentUids, ['auth-parent-1']);
++    assert.ok(!recipients.parentUids.includes('unlinked-parent-doc'));
++});
++
++test('accepts a legacy equal-ID parent only after Firebase Auth verification', async () => {
++    const db = createDb();
++    const resolveIdentity = createUserIdentityResolver({ db, auth: createAuth(['legacy-parent-auth-uid']) });
++    const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
++    const recipients = await getRecipients('student-doc-2');
++    assert.deepEqual(recipients.parentUids, ['legacy-parent-auth-uid']);
++});
++
++test('normalizes chat profile IDs and alias-only participants and excludes the sender in either ID form', async () => {
++    const db = createDb();
++    const resolveIdentity = createUserIdentityResolver({ db, auth: createAuth() });
++    const roomData = {
++        participantIds: ['student-doc-1'],
++        parentId: 'parent-doc-1',
 +    };
-+    assert.deepEqual(await resolve('student-doc-1'), expectedStudent);
-+    assert.deepEqual(await resolve('auth-student-1'), expectedStudent);
-+    assert.deepEqual(await resolve('auth-parent-1'), {
-+        authUid: 'auth-parent-1', profileDocId: 'parent-doc-1', role: 'parent', studentDocId: null,
-+    });
++    const fromStudentProfileId = await resolveChatRecipientAuthUids({ roomData, senderId: 'student-doc-1', resolveIdentity });
++    assert.deepEqual(fromStudentProfileId.recipientAuthUids, ['auth-parent-1']);
++    const fromParentAuthUid = await resolveChatRecipientAuthUids({ roomData, senderId: 'auth-parent-1', resolveIdentity });
++    assert.deepEqual(fromParentAuthUid.recipientAuthUids, ['auth-student-1']);
 +});
 +
-+test('normalizes student and parent recipients to unique Auth UIDs', async () => {
-+    const db = createDb();
-+    const getRecipients = createStudentRecipientResolver({ database: db });
-+
-+    assert.deepEqual(await getRecipients('student-doc-1'), {
-+        studentUid: 'auth-student-1',
-+        parentUids: ['auth-parent-1'],
-+        studentIdentity: {
-+            authUid: 'auth-student-1', profileDocId: 'student-doc-1', role: 'student', studentDocId: 'student-doc-1',
-+        },
-+    });
-+    assert.equal((await getRecipients('auth-student-1')).studentUid, 'auth-student-1');
-+});
-+
-+test('does not pass an unresolved key through as an Auth UID and caches repeated lookup', async () => {
-+    const db = createDb();
-+    const resolve = createUserIdentityResolver({ db });
-+    assert.equal(await resolve('invalid-key'), null);
-+    const readsAfterFirstCall = db.reads.length;
-+    assert.equal(await resolve('invalid-key'), null);
-+    assert.equal(db.reads.length, readsAfterFirstCall);
-+});
-+
-+test('clinic reservation canonical identity wins over an invalid request value', () => {
-+    assert.deepEqual(buildReservationIdentity({
-+        resolvedStudentAuthUid: 'auth-student-1', requestAuthUid: 'wrong-request-uid',
-+    }), { authUid: 'auth-student-1' });
-+    assert.deepEqual(buildReservationIdentity({
-+        resolvedStudentAuthUid: 'auth-student-1', requestAuthUid: null,
-+    }), { authUid: 'auth-student-1' });
-+});
-+
-+test('canonical recipient Auth UID maps to the existing token registry path', () => {
-+    const recipientAuthUid = 'auth-student-1';
-+    assert.equal(`users/${recipientAuthUid}/fcmTokens`, 'users/auth-student-1/fcmTokens');
-+});
+ test('clinic reservation canonical identity wins over an invalid request value', () => {
+     assert.deepEqual(buildReservationIdentity({
+         resolvedStudentAuthUid: 'auth-student-1', requestAuthUid: 'wrong-request-uid',
+     }), { authUid: 'auth-student-1' });
+     assert.deepEqual(buildReservationIdentity({
+         resolvedStudentAuthUid: 'auth-student-1', requestAuthUid: null,
+     }), { authUid: 'auth-student-1' });
+ });
+ 
+ test('canonical recipient Auth UID maps to the existing token registry path', () => {
+     const recipientAuthUid = 'auth-student-1';
+     assert.equal(`users/${recipientAuthUid}/fcmTokens`, 'users/auth-student-1/fcmTokens');
+ });
 diff --git a/functions/src/identity/resolveUserIdentity.js b/functions/src/identity/resolveUserIdentity.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..86b81ba0742561c4667fb3579e9c82e1456085e9
---- /dev/null
+index 86b81ba0742561c4667fb3579e9c82e1456085e9..953d15bdcaff10d2a27e2937646d648b8252d705 100644
+--- a/functions/src/identity/resolveUserIdentity.js
 +++ b/functions/src/identity/resolveUserIdentity.js
-@@ -0,0 +1,77 @@
-+const { getFirestore } = require('firebase-admin/firestore');
-+
-+const LEGACY_ALIAS_FIELDS = ['authUid', 'uid', 'userUid', 'studentUid', 'studentAuthUid'];
-+
-+const clean = (value) => String(value || '').trim();
-+
-+const identityFromProfile = (snapshot, { indexedAuthUid = '', matchedField = '', matchedKey = '' } = {}) => {
-+    if (!snapshot?.exists) return null;
-+    const data = snapshot.data() || {};
-+    const profileDocId = snapshot.id || clean(snapshot.ref?.id);
-+    const authUid = clean(data.authUid)
-+        || clean(indexedAuthUid)
-+        || clean(data.uid)
-+        || clean(data.userUid)
-+        || clean(data.studentAuthUid)
-+        || (matchedField === 'authUid' ? clean(matchedKey) : '')
-+        // Old profiles whose document ID was the Auth UID have no separate authUid field.
-+        || (profileDocId === clean(matchedKey) ? profileDocId : '');
-+
-+    if (!authUid || !profileDocId) return null;
-+    const role = clean(data.role) || null;
-+    return {
-+        authUid,
-+        profileDocId,
-+        role,
-+        studentDocId: role === 'student' ? profileDocId : null,
-+    };
-+};
-+
-+const createUserIdentityResolver = ({ db = getFirestore(), cache = new Map() } = {}) => {
-+    const resolveUncached = async (rawKey) => {
-+        const key = clean(rawKey);
-+        if (!key) return null;
-+
-+        // An index hit proves that key is an Auth UID and avoids collection queries.
-+        const indexSnapshot = await db.collection('userAuthIndex').doc(key).get();
-+        if (indexSnapshot.exists) {
-+            const profileDocId = clean(indexSnapshot.data()?.userDocId);
-+            if (profileDocId) {
-+                const profile = await db.collection('users').doc(profileDocId).get();
-+                const identity = identityFromProfile(profile, { indexedAuthUid: key, matchedKey: key });
-+                if (identity) return identity;
-+            }
-+        }
-+
-+        // The key may instead be the profile/student document ID.
-+        const directProfile = await db.collection('users').doc(key).get();
-+        const directIdentity = identityFromProfile(directProfile, { matchedKey: key });
-+        if (directIdentity) return directIdentity;
-+
-+        // Queries are a last-resort compatibility path and stop at the first match.
-+        for (const field of LEGACY_ALIAS_FIELDS) {
-+            const result = await db.collection('users').where(field, '==', key).limit(1).get();
-+            if (!result.empty) {
-+                const identity = identityFromProfile(result.docs[0], { matchedField: field, matchedKey: key });
-+                if (identity) return identity;
-+            }
-+        }
-+        return null;
-+    };
-+
-+    return (rawKey) => {
-+        const key = clean(rawKey);
-+        if (!key) return Promise.resolve(null);
-+        if (!cache.has(key)) cache.set(key, resolveUncached(key));
-+        return cache.get(key);
-+    };
-+};
-+
-+const resolveUserIdentity = createUserIdentityResolver();
-+
-+module.exports = {
-+    LEGACY_ALIAS_FIELDS,
-+    createUserIdentityResolver,
-+    identityFromProfile,
-+    resolveUserIdentity,
-+};
-diff --git a/functions/src/notify/recipients.js b/functions/src/notify/recipients.js
-index f915609eebd55ba8944ef7ee0dcc27a30bc90518..7c71b6231380d1340075434448e7beb45e779dfc 100644
---- a/functions/src/notify/recipients.js
-+++ b/functions/src/notify/recipients.js
-@@ -1,34 +1,38 @@
+@@ -1,77 +1,92 @@
  const { getFirestore } = require('firebase-admin/firestore');
- const { ROLE } = require('../_utils/roles');
-+const { createUserIdentityResolver, identityFromProfile } = require('../identity/resolveUserIdentity');
++const { getAuth } = require('firebase-admin/auth');
  
- const db = getFirestore();
+ const LEGACY_ALIAS_FIELDS = ['authUid', 'uid', 'userUid', 'studentUid', 'studentAuthUid'];
  
--const getRecipientsForStudent = async (authUid) => {
--    if (!authUid) {
-+const createStudentRecipientResolver = ({ database = db, resolveIdentity = createUserIdentityResolver({ db: database }) } = {}) => async (studentKey) => {
-+    if (!studentKey) {
-         return null;
-     }
+ const clean = (value) => String(value || '').trim();
  
--    const studentRef = db.collection('users').doc(String(authUid));
--    const snapshot = await studentRef.get();
--
--    if (!snapshot.exists) {
-+    const student = await resolveIdentity(studentKey);
-+    if (!student || student.role !== ROLE.STUDENT || !student.studentDocId) {
-         return null;
-     }
+-const identityFromProfile = (snapshot, { indexedAuthUid = '', matchedField = '', matchedKey = '' } = {}) => {
++const identityFromProfile = (snapshot, { indexedAuthUid = '', matchedField = '', matchedKey = '', verifiedEqualId = false } = {}) => {
+     if (!snapshot?.exists) return null;
+     const data = snapshot.data() || {};
+     const profileDocId = snapshot.id || clean(snapshot.ref?.id);
+     const authUid = clean(data.authUid)
+         || clean(indexedAuthUid)
+         || clean(data.uid)
+         || clean(data.userUid)
+         || clean(data.studentAuthUid)
+         || (matchedField === 'authUid' ? clean(matchedKey) : '')
+-        // Old profiles whose document ID was the Auth UID have no separate authUid field.
+-        || (profileDocId === clean(matchedKey) ? profileDocId : '');
++        // Only an Auth lookup (or an index hit above) may prove the legacy equal-ID shape.
++        || (verifiedEqualId && profileDocId === clean(matchedKey) ? profileDocId : '');
  
--    const data = snapshot.data() || {};
--    const parentQuery = await db.collection('users')
-+    const parentQuery = await database.collection('users')
-         .where('role', '==', ROLE.PARENT)
--        .where('studentIds', 'array-contains', String(authUid))
-+        .where('studentIds', 'array-contains', student.studentDocId)
-         .get();
--    const parentUids = parentQuery.docs.map((doc) => doc.id).filter(Boolean);
--    const studentUid = data.authUid || data.uid || authUid;
-+    const parentUids = parentQuery.docs
-+        .map((doc) => identityFromProfile(doc, { matchedKey: doc.id })?.authUid)
-+        .filter(Boolean);
-+    const uniqueAuthUids = [...new Set([student.authUid, ...parentUids])];
- 
+     if (!authUid || !profileDocId) return null;
+     const role = clean(data.role) || null;
      return {
--        studentUid,
--        parentUids,
-+        studentUid: student.authUid,
-+        parentUids: uniqueAuthUids.filter((uid) => uid !== student.authUid),
-+        studentIdentity: student,
+         authUid,
+         profileDocId,
+         role,
+         studentDocId: role === 'student' ? profileDocId : null,
      };
  };
  
-+const getRecipientsForStudent = createStudentRecipientResolver();
+-const createUserIdentityResolver = ({ db = getFirestore(), cache = new Map() } = {}) => {
++const createUserIdentityResolver = ({ db = getFirestore(), auth = getAuth(), cache = new Map() } = {}) => {
++    const isFirebaseAuthUid = async (uid) => {
++        try {
++            await auth.getUser(uid);
++            return true;
++        } catch (error) {
++            if (error?.code === 'auth/user-not-found') return false;
++            throw error;
++        }
++    };
 +
+     const resolveUncached = async (rawKey) => {
+         const key = clean(rawKey);
+         if (!key) return null;
+ 
+         // An index hit proves that key is an Auth UID and avoids collection queries.
+         const indexSnapshot = await db.collection('userAuthIndex').doc(key).get();
+         if (indexSnapshot.exists) {
+             const profileDocId = clean(indexSnapshot.data()?.userDocId);
+             if (profileDocId) {
+                 const profile = await db.collection('users').doc(profileDocId).get();
+                 const identity = identityFromProfile(profile, { indexedAuthUid: key, matchedKey: key });
+                 if (identity) return identity;
+             }
+         }
+ 
+         // The key may instead be the profile/student document ID.
+         const directProfile = await db.collection('users').doc(key).get();
+-        const directIdentity = identityFromProfile(directProfile, { matchedKey: key });
++        const explicitDirectIdentity = identityFromProfile(directProfile, { matchedKey: key });
++        if (explicitDirectIdentity) return explicitDirectIdentity;
++        const verifiedEqualId = directProfile.exists && await isFirebaseAuthUid(key);
++        const directIdentity = identityFromProfile(directProfile, { matchedKey: key, verifiedEqualId });
+         if (directIdentity) return directIdentity;
+ 
+         // Queries are a last-resort compatibility path and stop at the first match.
+         for (const field of LEGACY_ALIAS_FIELDS) {
+             const result = await db.collection('users').where(field, '==', key).limit(1).get();
+             if (!result.empty) {
+                 const identity = identityFromProfile(result.docs[0], { matchedField: field, matchedKey: key });
+                 if (identity) return identity;
+             }
+         }
+         return null;
+     };
+ 
+     return (rawKey) => {
+         const key = clean(rawKey);
+         if (!key) return Promise.resolve(null);
+         if (!cache.has(key)) cache.set(key, resolveUncached(key));
+         return cache.get(key);
+     };
+ };
+ 
+-const resolveUserIdentity = createUserIdentityResolver();
++// Convenience only: deliberately creates a fresh resolver so no cache survives a call.
++const resolveUserIdentity = (rawKey, options) => createUserIdentityResolver(options)(rawKey);
+ 
+ module.exports = {
+     LEGACY_ALIAS_FIELDS,
+     createUserIdentityResolver,
+     identityFromProfile,
+     resolveUserIdentity,
+ };
+diff --git a/functions/src/notify/recipients.js b/functions/src/notify/recipients.js
+index 7c71b6231380d1340075434448e7beb45e779dfc..92f15f6281c23653a6bb3f777f08221770f68b5c 100644
+--- a/functions/src/notify/recipients.js
++++ b/functions/src/notify/recipients.js
+@@ -1,38 +1,46 @@
+ const { getFirestore } = require('firebase-admin/firestore');
+ const { ROLE } = require('../_utils/roles');
+-const { createUserIdentityResolver, identityFromProfile } = require('../identity/resolveUserIdentity');
++const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
+ 
+ const db = getFirestore();
+ 
+ const createStudentRecipientResolver = ({ database = db, resolveIdentity = createUserIdentityResolver({ db: database }) } = {}) => async (studentKey) => {
+     if (!studentKey) {
+         return null;
+     }
+ 
+     const student = await resolveIdentity(studentKey);
+     if (!student || student.role !== ROLE.STUDENT || !student.studentDocId) {
+         return null;
+     }
+ 
+     const parentQuery = await database.collection('users')
+         .where('role', '==', ROLE.PARENT)
+         .where('studentIds', 'array-contains', student.studentDocId)
+         .get();
+-    const parentUids = parentQuery.docs
+-        .map((doc) => identityFromProfile(doc, { matchedKey: doc.id })?.authUid)
+-        .filter(Boolean);
++    const parentIdentities = await Promise.all(parentQuery.docs.map((doc) => resolveIdentity(doc.id)));
++    parentIdentities.forEach((identity, index) => {
++        if (!identity) {
++            console.warn('[notifications] parent recipient excluded: canonical Auth UID unresolved', {
++                parentProfileDocId: parentQuery.docs[index].id,
++                studentProfileDocId: student.studentDocId,
++            });
++        }
++    });
++    const parentUids = parentIdentities.map((identity) => identity?.authUid).filter(Boolean);
+     const uniqueAuthUids = [...new Set([student.authUid, ...parentUids])];
+ 
+     return {
+         studentUid: student.authUid,
+         parentUids: uniqueAuthUids.filter((uid) => uid !== student.authUid),
+         studentIdentity: student,
+     };
+ };
+ 
+-const getRecipientsForStudent = createStudentRecipientResolver();
++// One-shot convenience wrapper. Trigger handlers should inject one resolver per invocation.
++const getRecipientsForStudent = (studentKey, options) => createStudentRecipientResolver(options)(studentKey);
+ 
  module.exports = {
      getRecipientsForStudent,
+     createStudentRecipientResolver,
+ };
+diff --git a/functions/src/triggers/announcements.js b/functions/src/triggers/announcements.js
+index 8d9a02d8ac35153cb50a350d541e7e7f0444e5bd..615748dc4425f156c6991d1a8dd0a3a6c07c40f4 100644
+--- a/functions/src/triggers/announcements.js
++++ b/functions/src/triggers/announcements.js
+@@ -1,28 +1,29 @@
+ const functions = require('firebase-functions');
+ const { FieldValue, getFirestore } = require('firebase-admin/firestore');
+-const { getRecipientsForStudent } = require('../notify/recipients');
++const { createStudentRecipientResolver } = require('../notify/recipients');
++const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
+ 
+ const db = getFirestore();
+ const TYPE = 'BOARD_POST';
+ 
+ const collectTargetStudentUids = (data) => ([
+     ...(Array.isArray(data.targetAuthUids) ? data.targetAuthUids : []),
+ ].map((value) => String(value || '').trim()).filter(Boolean));
+ 
+ const extractClassStudentUids = async (classIds = []) => {
+     const uniqueClassIds = [...new Set(classIds.map((value) => String(value || '').trim()).filter(Boolean))];
+     if (uniqueClassIds.length === 0) return [];
+ 
+     const studentUidSet = new Set();
+     const snapshots = await Promise.all(uniqueClassIds.map((classId) => db.collection('classes').doc(classId).get()));
+ 
+     snapshots.forEach((snapshot) => {
+         if (!snapshot.exists) return;
+         const data = snapshot.data() || {};
+         const candidates = [
+             ...(Array.isArray(data.studentIds) ? data.studentIds : []),
+             ...(Array.isArray(data.studentUids) ? data.studentUids : []),
+             ...(Array.isArray(data.students) ? data.students.map((student) => student?.authUid || student?.studentId || student?.id) : []),
+         ];
+         candidates.forEach((value) => {
+             const key = String(value || '').trim();
+@@ -32,53 +33,55 @@ const extractClassStudentUids = async (classIds = []) => {
+ 
+     return [...studentUidSet];
+ };
+ 
+ const onAnnouncementCreated = functions.firestore
+     .document('announcements/{docId}')
+     .onWrite(async (change, context) => {
+         if (!change.after.exists || change.before.exists) {
+             return null;
+         }
+ 
+         const data = change.after.data() || {};
+         if (data.isPublic === true) {
+             return null;
+         }
+ 
+         const classTargets = Array.isArray(data.targetClassIds) && data.targetClassIds.length > 0
+             ? data.targetClassIds
+             : data.targetClasses;
+         const classTargetStudents = await extractClassStudentUids(Array.isArray(classTargets) ? classTargets : []);
+         const targetStudentUids = [...new Set([
+             ...collectTargetStudentUids(data),
+             ...classTargetStudents,
+         ])];
+         const recipientSet = new Set();
++        const resolveIdentity = createUserIdentityResolver({ db });
++        const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
+ 
+         for (const studentUid of targetStudentUids) {
+-            const recipients = await getRecipientsForStudent(studentUid);
++            const recipients = await getRecipients(studentUid);
+             if (!recipients) {
+                 continue;
+             }
+             if (recipients.studentUid) {
+                 recipientSet.add(recipients.studentUid);
+             }
+             recipients.parentUids.forEach((parentUid) => recipientSet.add(parentUid));
+         }
+ 
+         const userIds = [...recipientSet];
+         await change.after.ref.set({
+             audienceAuthUids: userIds,
+             targetClassIds: Array.isArray(classTargets) ? classTargets : [],
+         }, { merge: true });
+         const refId = context.params.docId;
+ 
+         const title = data.title || '새 게시글이 등록되었습니다.';
+         const body = data.content ? String(data.content).replace(/<[^>]*>/g, '').slice(0, 120) : '게시판 글을 확인해 주세요.';
+         const batch = db.batch();
+ 
+         userIds.forEach((uid) => {
+             const docRef = db.collection('notifications').doc(uid).collection('items').doc(`boardPost_${refId}`);
+             batch.set(docRef, {
+                 type: TYPE,
+                 category: 'board_post',
+@@ -96,26 +99,26 @@ const onAnnouncementCreated = functions.firestore
+         await db.collection('notifications').add({
+             targetCount: userIds.length,
+             successCount: 0,
+             failureCount: 0,
+             failedTokenCount: 0,
+             sentAt: FieldValue.serverTimestamp(),
+             eventType: TYPE,
+             type: TYPE,
+             title,
+             body,
+             ref: `announcements/${refId}`,
+             refCollection: 'announcements',
+             refId,
+             announcementId: refId,
+             targetClasses: Array.isArray(data.targetClasses) ? data.targetClasses : [],
+             targetStudentCount: targetStudentUids.length,
+             notificationDocPattern: 'notifications/{uid}/items/boardPost_{announcementId}',
+             dedupeMode: 'create_only',
+         });
+ 
+         return null;
+     });
+ 
+ module.exports = {
+     onAnnouncementCreated,
 -};
 \ No newline at end of file
-+    createStudentRecipientResolver,
++};
+diff --git a/functions/src/triggers/attendanceLogs.js b/functions/src/triggers/attendanceLogs.js
+index 6a862adbd5fd96e370c80c8017c5546c2f699c85..15dd4f5c4f3b2314abfeeb1c828c2c6e92550672 100644
+--- a/functions/src/triggers/attendanceLogs.js
++++ b/functions/src/triggers/attendanceLogs.js
+@@ -1,76 +1,81 @@
+ const functions = require('firebase-functions');
+-const { getRecipientsForStudent } = require('../notify/recipients');
++const { getFirestore } = require('firebase-admin/firestore');
++const { createStudentRecipientResolver } = require('../notify/recipients');
++const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
+ const { notifyUsers } = require('../notify/notifications');
+ const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+ 
+ const TYPE = 'ATTENDANCE_UPDATED';
++const db = getFirestore();
+ const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
+ 
+ const onAttendanceLogWritten = functions.firestore
+     .document('attendanceLogs/{id}')
+     .onWrite(async (change, context) => {
+         if (!change.after.exists) {
+             return null;
+         }
+ 
+         const afterData = change.after.data() || {};
+         const beforeData = change.before.exists ? change.before.data() : null;
+ 
+         if (beforeData && isUnchanged(beforeData, afterData)) {
+             return null;
+         }
+ 
+         if (!isNotificationSendingEnabled()) {
+             console.debug('[notifications] trigger skipped: notification_disabled');
+             return notificationDisabledResult();
+         }
+ 
++        const resolveIdentity = createUserIdentityResolver({ db });
++        const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
+         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+-        const recipients = await getRecipientsForStudent(authUid);
++        const recipients = await getRecipients(authUid);
+ 
+         if (!recipients) {
+             await notifyUsers({
+                 userIds: [],
+                 payload: {
+                     type: TYPE,
+                     title: '출결 안내',
+                     body: '출결 정보가 업데이트되었습니다.',
+                     ref: `attendanceLogs/${context.params.id}`,
+                     authUid,
+                 },
+                 fcmData: {
+                     type: TYPE,
+                     refCollection: 'attendanceLogs',
+                     refId: context.params.id,
+                     authUid,
+                 },
+             });
+             return null;
+         }
+ 
+         const userIds = [recipients.studentUid];
+         const refId = context.params.id;
+ 
+         await notifyUsers({
+             userIds,
+             payload: {
+                 type: TYPE,
+                 title: '출결 안내',
+                 body: '출결 정보가 업데이트되었습니다.',
+                 ref: `attendanceLogs/${refId}`,
+                 authUid,
+             },
+             fcmData: {
+                 type: TYPE,
+                 refCollection: 'attendanceLogs',
+                 refId,
+                 authUid,
+             },
+         });
+ 
+         return null;
+     });
+ 
+ module.exports = {
+     onAttendanceLogWritten,
+-};
+\ No newline at end of file
 +};
 diff --git a/functions/src/triggers/chatMessages.js b/functions/src/triggers/chatMessages.js
-index 54f0aa01480ca6a754e79c4d110ab176ccc8e9ac..d1fb8f40f06a5631b30825611eb9af1c2c9c2b87 100644
+index d1fb8f40f06a5631b30825611eb9af1c2c9c2b87..7c6cb05be83fdb1a75265511575213239c4b5246 100644
 --- a/functions/src/triggers/chatMessages.js
 +++ b/functions/src/triggers/chatMessages.js
-@@ -1,159 +1,135 @@
+@@ -1,132 +1,148 @@
  const functions = require('firebase-functions');
  const { getFirestore, FieldValue } = require('firebase-admin/firestore');
  const { notifyUsers } = require('../notify/notifications');
-+const { resolveUserIdentity } = require('../identity/resolveUserIdentity');
+-const { resolveUserIdentity } = require('../identity/resolveUserIdentity');
++const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
  
  const TYPE = 'CHAT_MESSAGE';
  const db = getFirestore();
@@ -622,15 +681,33 @@ index 54f0aa01480ca6a754e79c4d110ab176ccc8e9ac..d1fb8f40f06a5631b30825611eb9af1c
      values.map((value) => String(value || '').trim()).filter(Boolean)
  ));
  
- const resolveParticipantAuthUid = async (participantId) => {
-     const normalizedId = String(participantId || '').trim();
-     if (!normalizedId) return '';
- 
--    const userSnapshot = await db.collection('users').doc(normalizedId).get();
--    const authUid = userSnapshot.exists ? String(userSnapshot.data()?.authUid || '').trim() : '';
--    return authUid || normalizedId;
-+    const identity = await resolveUserIdentity(normalizedId);
-+    return identity?.authUid || '';
+-const resolveParticipantAuthUid = async (participantId) => {
+-    const normalizedId = String(participantId || '').trim();
+-    if (!normalizedId) return '';
+-
+-    const identity = await resolveUserIdentity(normalizedId);
+-    return identity?.authUid || '';
++const getChatRoomParticipantCandidates = (roomData = {}) => uniqueStrings([
++    ...(Array.isArray(roomData.participantIds) ? roomData.participantIds : []),
++    roomData.studentId,
++    roomData.studentUid,
++    roomData.studentAuthUid,
++    roomData.parentId,
++    roomData.parentUid,
++    roomData.parentAuthUid,
++]);
++
++const resolveChatRecipientAuthUids = async ({ roomData, senderId, resolveIdentity }) => {
++    const participantCandidates = getChatRoomParticipantCandidates(roomData);
++    const senderIdentity = await resolveIdentity(senderId);
++    const identities = await Promise.all(participantCandidates.map((candidate) => resolveIdentity(candidate)));
++    return {
++        participantCandidates,
++        senderAuthUid: senderIdentity?.authUid || '',
++        recipientAuthUids: uniqueStrings(identities
++            .map((identity) => identity?.authUid)
++            .filter((authUid) => authUid && authUid !== senderIdentity?.authUid)),
++    };
  };
  
  const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
@@ -664,6 +741,7 @@ index 54f0aa01480ca6a754e79c4d110ab176ccc8e9ac..d1fb8f40f06a5631b30825611eb9af1c
          }
  
          const { roomId, messageId } = context.params;
++        const resolveIdentity = createUserIdentityResolver({ db });
          const senderId = String(messageData.senderId || '').trim();
          const roomSnapshot = await db.collection('chatRooms').doc(roomId).get();
          if (!roomSnapshot.exists) {
@@ -672,51 +750,26 @@ index 54f0aa01480ca6a754e79c4d110ab176ccc8e9ac..d1fb8f40f06a5631b30825611eb9af1c
          }
  
          const roomData = roomSnapshot.data() || {};
-         const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
--        const studentOwnerCandidates = uniqueStrings([
--            roomData.studentId,
--            roomData.studentUid,
--            roomData.studentAuthUid,
--        ]);
--        const parentOwnerCandidates = uniqueStrings([
--            roomData.parentId,
--            roomData.parentUid,
--            roomData.parentAuthUid,
--        ]);
-         const senderResolvedAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
--        const senderIsStudent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => studentOwnerCandidates.includes(uid));
--        const senderIsParent = uniqueStrings([senderId, senderResolvedAuthUid]).some((uid) => parentOwnerCandidates.includes(uid));
--        const senderOwnerUids = uniqueStrings([
--            senderId,
--            senderResolvedAuthUid,
--            senderIsStudent ? roomData.studentId : '',
--            senderIsParent ? roomData.parentId : '',
--        ]);
-+        const senderOwnerUids = uniqueStrings([senderResolvedAuthUid]);
-         const senderOwnerUidSet = new Set(senderOwnerUids);
--        const recipientOwnerUids = uniqueStrings((await Promise.all(
--            participantIds.map(async (participantId) => {
--                const resolvedAuthUid = await resolveParticipantAuthUid(participantId);
--                const participantKeys = uniqueStrings([participantId, resolvedAuthUid]);
--                const recipientIsStudent = participantKeys.some((uid) => studentOwnerCandidates.includes(uid));
--                const recipientIsParent = participantKeys.some((uid) => parentOwnerCandidates.includes(uid));
--                return [
--                    participantId,
--                    resolvedAuthUid,
--                    recipientIsStudent ? roomData.studentId : '',
--                    recipientIsParent ? roomData.parentId : '',
--                ];
--            })
--        )).flat()).filter((ownerUid) => ownerUid && !senderOwnerUidSet.has(ownerUid));
-+        const recipientOwnerUids = uniqueStrings(await Promise.all(
-+            participantIds.map(resolveParticipantAuthUid)
-+        )).filter((ownerUid) => !senderOwnerUidSet.has(ownerUid));
+-        const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
+-        const senderResolvedAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
+-        const senderOwnerUids = uniqueStrings([senderResolvedAuthUid]);
+-        const senderOwnerUidSet = new Set(senderOwnerUids);
+-        const recipientOwnerUids = uniqueStrings(await Promise.all(
+-            participantIds.map(resolveParticipantAuthUid)
+-        )).filter((ownerUid) => !senderOwnerUidSet.has(ownerUid));
++        const { participantCandidates, senderAuthUid, recipientAuthUids: recipientOwnerUids } = await resolveChatRecipientAuthUids({
++            roomData,
++            senderId,
++            resolveIdentity,
++        });
++        const senderOwnerUids = uniqueStrings([senderAuthUid]);
  
          console.log('[notifications] chat room message recipients resolved', {
              roomId,
              messageId,
              senderId,
-             participantIds,
+-            participantIds,
++            participantCandidates,
              senderOwnerUids,
              recipientOwnerUids,
          });
@@ -749,13 +802,15 @@ index 54f0aa01480ca6a754e79c4d110ab176ccc8e9ac..d1fb8f40f06a5631b30825611eb9af1c
          const chatData = chatSnapshot.data() || {};
          const participantIds = Array.isArray(chatData.participantIds) ? chatData.participantIds : [];
          const senderId = messageData.senderId;
++        const resolveIdentity = createUserIdentityResolver({ db });
  
--        const recipients = participantIds.filter((uid) => uid && uid !== senderId);
-+        const senderIdentity = await resolveUserIdentity(senderId);
-+        const resolvedParticipants = await Promise.all(participantIds.map((uid) => resolveUserIdentity(uid)));
-+        const recipients = uniqueStrings(resolvedParticipants
-+            .map((identity) => identity?.authUid)
-+            .filter((uid) => uid && uid !== senderIdentity?.authUid));
+-        const senderIdentity = await resolveUserIdentity(senderId);
+-        const resolvedParticipants = await Promise.all(participantIds.map((uid) => resolveUserIdentity(uid)));
++        const senderIdentity = await resolveIdentity(senderId);
++        const resolvedParticipants = await Promise.all(participantIds.map((uid) => resolveIdentity(uid)));
+         const recipients = uniqueStrings(resolvedParticipants
+             .map((identity) => identity?.authUid)
+             .filter((uid) => uid && uid !== senderIdentity?.authUid));
  
          const refId = context.params.chatId;
          const lastMessageText = messageData.text || messageData.body || '';
@@ -778,10 +833,9 @@ index 54f0aa01480ca6a754e79c4d110ab176ccc8e9ac..d1fb8f40f06a5631b30825611eb9af1c
                  },
              });
              return null;
-         }
- 
-         recipients.forEach((uid) => {
-@@ -165,26 +141,26 @@ const onChatMessageCreated = functions.firestore
+@@ -139,28 +155,30 @@ const onChatMessageCreated = functions.firestore
+                 lastMessageAt,
+                 lastMessageText,
              }, { merge: true });
          });
  
@@ -805,8 +859,309 @@ index 54f0aa01480ca6a754e79c4d110ab176ccc8e9ac..d1fb8f40f06a5631b30825611eb9af1c
      });
  
  module.exports = {
++    getChatRoomParticipantCandidates,
      onChatMessageCreated,
      onChatRoomMessageCreated,
++    resolveChatRecipientAuthUids,
+ };
+diff --git a/functions/src/triggers/grades.js b/functions/src/triggers/grades.js
+index 0f1329f468d16da61c635d684c244d7c095bcf3d..5abe3d1d8f71eb375e678e26e387d94051448d15 100644
+--- a/functions/src/triggers/grades.js
++++ b/functions/src/triggers/grades.js
+@@ -1,27 +1,28 @@
+ const functions = require('firebase-functions');
+-const { getRecipientsForStudent } = require('../notify/recipients');
++const { createStudentRecipientResolver } = require('../notify/recipients');
++const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
+ const { notifyUsers } = require('../notify/notifications');
+ const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+ 
+ const db = getFirestore();
+ 
+ const TYPE = 'GRADE_PUBLISHED';
+ 
+ const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
+ 
+ const toFiniteScore = (value) => {
+     if (value === null || value === undefined || value === '' || value === '미응시' || value === '미입력') return null;
+     const number = Number(value);
+     return Number.isFinite(number) ? number : null;
+ };
+ 
+ const isCorrect = (value) => [true, 1, '1', 'O', 'o', '맞음', '고침', '정답', 'correct'].includes(value);
+ 
+ const getQuestionScores = (test = {}) => {
+     const totalQuestions = Number.parseInt(test.totalQuestions, 10) || 0;
+     const maxScore = toFiniteScore(test.maxScore) ?? 100;
+     if (Array.isArray(test.questionScores) && test.questionScores.length >= totalQuestions) {
+         return test.questionScores.map((score) => toFiniteScore(score) ?? 0);
+     }
+     return totalQuestions > 0 ? Array.from({ length: totalQuestions }, () => maxScore / totalQuestions) : [];
+@@ -94,73 +95,75 @@ const onGradeWritten = functions.firestore
+         const changedData = change.after.exists ? change.after.data() : change.before.data();
+         if (changedData?.testId) {
+             await recomputeTestStats(changedData.testId);
+         }
+ 
+         if (!change.after.exists) {
+             return null;
+         }
+ 
+         const afterData = change.after.data() || {};
+         const beforeData = change.before.exists ? change.before.data() : null;
+ 
+         if (afterData.notifyMode === 'staff') {
+             return null;
+         }
+ 
+         if (beforeData && isUnchanged(beforeData, afterData)) {
+             return null;
+         }
+ 
+         if (!isNotificationSendingEnabled()) {
+             console.debug('[notifications] trigger skipped: notification_disabled');
+             return notificationDisabledResult();
+         }
+ 
++        const resolveIdentity = createUserIdentityResolver({ db });
++        const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
+         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+-        const recipients = await getRecipientsForStudent(authUid);
++        const recipients = await getRecipients(authUid);
+ 
+         if (!recipients) {
+             await notifyUsers({
+                 userIds: [],
+                 payload: {
+                     type: TYPE,
+                     title: '성적 업데이트',
+                     body: '성적이 업데이트되었습니다.',
+                     ref: `grades/${context.params.id}`,
+                     authUid,
+                 },
+                 fcmData: {
+                     type: TYPE,
+                     refCollection: 'grades',
+                     refId: context.params.id,
+                     authUid,
+                 },
+             });
+             return null;
+         }
+ 
+         const userIds = [recipients.studentUid];
+         const refId = context.params.id;
+ 
+         await notifyUsers({
+             userIds,
+             payload: {
+                 type: TYPE,
+                 title: '성적 업데이트',
+                 body: '성적이 업데이트되었습니다.',
+                 ref: `grades/${refId}`,
+                 authUid,
+             },
+             fcmData: {
+                 type: TYPE,
+                 refCollection: 'grades',
+                 refId,
+                 authUid,
+             },
+         });
+         return null;
+     });
+ 
+ module.exports = {
+     onGradeWritten,
+-};
+\ No newline at end of file
++};
+diff --git a/functions/src/triggers/homeworkResults.js b/functions/src/triggers/homeworkResults.js
+index c2bff75b2c44e111485f7feeafb711825d189097..62acbc673f045086b159958cd048f965f8bb53db 100644
+--- a/functions/src/triggers/homeworkResults.js
++++ b/functions/src/triggers/homeworkResults.js
+@@ -1,80 +1,85 @@
+ const functions = require('firebase-functions');
+-const { getRecipientsForStudent } = require('../notify/recipients');
++const { getFirestore } = require('firebase-admin/firestore');
++const { createStudentRecipientResolver } = require('../notify/recipients');
++const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
+ const { notifyUsers } = require('../notify/notifications');
+ const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+ 
+ const TYPE = 'HOMEWORK_GRADED';
++const db = getFirestore();
+ 
+ const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
+ 
+ const onHomeworkResultWritten = functions.firestore
+     .document('homeworkResults/{id}')
+     .onWrite(async (change, context) => {
+         if (!change.after.exists) {
+             return null;
+         }
+ 
+         const afterData = change.after.data() || {};
+         const beforeData = change.before.exists ? change.before.data() : null;
+ 
+         if (afterData.notifyMode === 'staff') {
+             return null;
+         }
+ 
+         if (beforeData && isUnchanged(beforeData, afterData)) {
+             return null;
+         }
+ 
+         if (!isNotificationSendingEnabled()) {
+             console.debug('[notifications] trigger skipped: notification_disabled');
+             return notificationDisabledResult();
+         }
+ 
++        const resolveIdentity = createUserIdentityResolver({ db });
++        const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
+         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+-        const recipients = await getRecipientsForStudent(authUid);
++        const recipients = await getRecipients(authUid);
+ 
+         if (!recipients) {
+             await notifyUsers({
+                 userIds: [],
+                 payload: {
+                     type: TYPE,
+                     title: '과제 채점 완료',
+                     body: '과제가 채점되었습니다.',
+                     ref: `homeworkResults/${context.params.id}`,
+                     authUid,
+                 },
+                 fcmData: {
+                     type: TYPE,
+                     refCollection: 'homeworkResults',
+                     refId: context.params.id,
+                     authUid,
+                 },
+             });
+             return null;
+         }
+ 
+         const userIds = [recipients.studentUid];
+         const refId = context.params.id;
+ 
+         await notifyUsers({
+             userIds,
+             payload: {
+                 type: TYPE,
+                 title: '과제 채점 완료',
+                 body: '과제가 채점되었습니다.',
+                 ref: `homeworkResults/${refId}`,
+                 authUid,
+             },
+             fcmData: {
+                 type: TYPE,
+                 refCollection: 'homeworkResults',
+                 refId,
+                 authUid,
+             },
+         });
+         return null;
+     });
+ 
+ module.exports = {
+     onHomeworkResultWritten,
+-};
+\ No newline at end of file
++};
+diff --git a/functions/src/triggers/lessonLogs.js b/functions/src/triggers/lessonLogs.js
+index d69a3313fec4bc7343b361c6f6a72ac1ada6d83a..0bef87ddca60698eda4946998f490742abfe53af 100644
+--- a/functions/src/triggers/lessonLogs.js
++++ b/functions/src/triggers/lessonLogs.js
+@@ -1,80 +1,85 @@
+ const functions = require('firebase-functions');
+-const { getRecipientsForStudent } = require('../notify/recipients');
++const { getFirestore } = require('firebase-admin/firestore');
++const { createStudentRecipientResolver } = require('../notify/recipients');
++const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
+ const { notifyUsers } = require('../notify/notifications');
+ const { isNotificationSendingEnabled, notificationDisabledResult } = require('../notify/settings');
+ 
+ const TYPE = 'LESSON_UPDATED';
++const db = getFirestore();
+ 
+ const isUnchanged = (before, after) => JSON.stringify(before) === JSON.stringify(after);
+ 
+ const onLessonLogWritten = functions.firestore
+     .document('lessonLogs/{id}')
+     .onWrite(async (change, context) => {
+         if (!change.after.exists) {
+             return null;
+         }
+ 
+         const afterData = change.after.data() || {};
+         const beforeData = change.before.exists ? change.before.data() : null;
+ 
+         if (afterData.notifyMode === 'staff') {
+             return null;
+         }
+ 
+         if (beforeData && isUnchanged(beforeData, afterData)) {
+             return null;
+         }
+ 
+         if (!isNotificationSendingEnabled()) {
+             console.debug('[notifications] trigger skipped: notification_disabled');
+             return notificationDisabledResult();
+         }
+ 
++        const resolveIdentity = createUserIdentityResolver({ db });
++        const getRecipients = createStudentRecipientResolver({ database: db, resolveIdentity });
+         const authUid = afterData.authUid || afterData.studentUid || afterData.studentId;
+-        const recipients = await getRecipientsForStudent(authUid);
++        const recipients = await getRecipients(authUid);
+ 
+         if (!recipients) {
+             await notifyUsers({
+                 userIds: [],
+                 payload: {
+                     type: TYPE,
+                     title: '수업 안내',
+                     body: '새 수업 기록이 등록되었습니다.',
+                     ref: `lessonLogs/${context.params.id}`,
+                     authUid,
+                 },
+                 fcmData: {
+                     type: TYPE,
+                     refCollection: 'lessonLogs',
+                     refId: context.params.id,
+                     authUid,
+                 },
+             });
+             return null;
+         }
+ 
+         const userIds = [recipients.studentUid];
+         const refId = context.params.id;
+ 
+         await notifyUsers({
+             userIds,
+             payload: {
+                 type: TYPE,
+                 title: '수업 안내',
+                 body: '새 수업 기록이 등록되었습니다.',
+                 ref: `lessonLogs/${refId}`,
+                 authUid,
+             },
+             fcmData: {
+                 type: TYPE,
+                 refCollection: 'lessonLogs',
+                 refId,
+                 authUid,
+             },
+         });
+         return null;
+     });
+ 
+ module.exports = {
+     onLessonLogWritten,
 -};
 \ No newline at end of file
 +};

@@ -1,7 +1,7 @@
 const functions = require('firebase-functions');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { notifyUsers } = require('../notify/notifications');
-const { resolveUserIdentity } = require('../identity/resolveUserIdentity');
+const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
 
 const TYPE = 'CHAT_MESSAGE';
 const db = getFirestore();
@@ -10,12 +10,27 @@ const uniqueStrings = (values = []) => Array.from(new Set(
     values.map((value) => String(value || '').trim()).filter(Boolean)
 ));
 
-const resolveParticipantAuthUid = async (participantId) => {
-    const normalizedId = String(participantId || '').trim();
-    if (!normalizedId) return '';
+const getChatRoomParticipantCandidates = (roomData = {}) => uniqueStrings([
+    ...(Array.isArray(roomData.participantIds) ? roomData.participantIds : []),
+    roomData.studentId,
+    roomData.studentUid,
+    roomData.studentAuthUid,
+    roomData.parentId,
+    roomData.parentUid,
+    roomData.parentAuthUid,
+]);
 
-    const identity = await resolveUserIdentity(normalizedId);
-    return identity?.authUid || '';
+const resolveChatRecipientAuthUids = async ({ roomData, senderId, resolveIdentity }) => {
+    const participantCandidates = getChatRoomParticipantCandidates(roomData);
+    const senderIdentity = await resolveIdentity(senderId);
+    const identities = await Promise.all(participantCandidates.map((candidate) => resolveIdentity(candidate)));
+    return {
+        participantCandidates,
+        senderAuthUid: senderIdentity?.authUid || '',
+        recipientAuthUids: uniqueStrings(identities
+            .map((identity) => identity?.authUid)
+            .filter((authUid) => authUid && authUid !== senderIdentity?.authUid)),
+    };
 };
 
 const buildChatRoomNotification = ({ roomId, messageId, messageData }) => ({
@@ -49,6 +64,7 @@ const onChatRoomMessageCreated = functions.firestore
         }
 
         const { roomId, messageId } = context.params;
+        const resolveIdentity = createUserIdentityResolver({ db });
         const senderId = String(messageData.senderId || '').trim();
         const roomSnapshot = await db.collection('chatRooms').doc(roomId).get();
         if (!roomSnapshot.exists) {
@@ -57,19 +73,18 @@ const onChatRoomMessageCreated = functions.firestore
         }
 
         const roomData = roomSnapshot.data() || {};
-        const participantIds = uniqueStrings(Array.isArray(roomData.participantIds) ? roomData.participantIds : []);
-        const senderResolvedAuthUid = senderId ? await resolveParticipantAuthUid(senderId) : '';
-        const senderOwnerUids = uniqueStrings([senderResolvedAuthUid]);
-        const senderOwnerUidSet = new Set(senderOwnerUids);
-        const recipientOwnerUids = uniqueStrings(await Promise.all(
-            participantIds.map(resolveParticipantAuthUid)
-        )).filter((ownerUid) => !senderOwnerUidSet.has(ownerUid));
+        const { participantCandidates, senderAuthUid, recipientAuthUids: recipientOwnerUids } = await resolveChatRecipientAuthUids({
+            roomData,
+            senderId,
+            resolveIdentity,
+        });
+        const senderOwnerUids = uniqueStrings([senderAuthUid]);
 
         console.log('[notifications] chat room message recipients resolved', {
             roomId,
             messageId,
             senderId,
-            participantIds,
+            participantCandidates,
             senderOwnerUids,
             recipientOwnerUids,
         });
@@ -102,9 +117,10 @@ const onChatMessageCreated = functions.firestore
         const chatData = chatSnapshot.data() || {};
         const participantIds = Array.isArray(chatData.participantIds) ? chatData.participantIds : [];
         const senderId = messageData.senderId;
+        const resolveIdentity = createUserIdentityResolver({ db });
 
-        const senderIdentity = await resolveUserIdentity(senderId);
-        const resolvedParticipants = await Promise.all(participantIds.map((uid) => resolveUserIdentity(uid)));
+        const senderIdentity = await resolveIdentity(senderId);
+        const resolvedParticipants = await Promise.all(participantIds.map((uid) => resolveIdentity(uid)));
         const recipients = uniqueStrings(resolvedParticipants
             .map((identity) => identity?.authUid)
             .filter((uid) => uid && uid !== senderIdentity?.authUid));
@@ -161,6 +177,8 @@ const onChatMessageCreated = functions.firestore
     });
 
 module.exports = {
+    getChatRoomParticipantCandidates,
     onChatMessageCreated,
     onChatRoomMessageCreated,
+    resolveChatRecipientAuthUids,
 };
