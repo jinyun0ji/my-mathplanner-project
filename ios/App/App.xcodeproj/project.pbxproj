@@ -23,6 +23,9 @@
 		A10000000000000000000002 /* NativeYouTubePlayerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */; };
 		A10000000000000000000004 /* NativeYouTubePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* NativeYouTubePlugin.swift */; };
 		A10000000000000000000006 /* NativeYouTubeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* NativeYouTubeViewController.swift */; };
+		A20000000000000000000002 /* NativeFcmTokenPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* NativeFcmTokenPlugin.swift */; };
+		A20000000000000000000004 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000003 /* FirebaseCore */; };
+		A20000000000000000000006 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000005 /* FirebaseMessaging */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,6 +45,8 @@
 		A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeYouTubePlayerViewController.swift; sourceTree = "<group>"; };
 		A10000000000000000000003 /* NativeYouTubePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeYouTubePlugin.swift; sourceTree = "<group>"; };
 		A10000000000000000000005 /* NativeYouTubeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeYouTubeViewController.swift; sourceTree = "<group>"; };
+		A20000000000000000000001 /* NativeFcmTokenPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeFcmTokenPlugin.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,6 +55,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
+				A20000000000000000000004 /* FirebaseCore in Frameworks */,
+				A20000000000000000000006 /* FirebaseMessaging in Frameworks */,
 				40E8BF1C2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper in Frameworks */,
 				40FC37BE2FFED46E0056B4EE /* GoogleSignIn in Frameworks */,
 				40FC37C02FFED46E0056B4EE /* GoogleSignInSwift in Frameworks */,
@@ -81,6 +88,8 @@
 			isa = PBXGroup;
 			children = (
 				40FC37C12FFED6530056B4EE /* NativeGoogleAuthPlugin.swift */,
+				A20000000000000000000001 /* NativeFcmTokenPlugin.swift */,
+				A20000000000000000000007 /* App.entitlements */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */,
@@ -126,6 +135,8 @@
 				40E8BF1B2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper */,
 				40FC37BD2FFED46E0056B4EE /* GoogleSignIn */,
 				40FC37BF2FFED46E0056B4EE /* GoogleSignInSwift */,
+				A20000000000000000000003 /* FirebaseCore */,
+				A20000000000000000000005 /* FirebaseMessaging */,
 			);
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
@@ -144,6 +155,9 @@
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
 						ProvisioningStyle = Automatic;
+						SystemCapabilities = {
+							com.apple.Push = { enabled = 1; };
+						};
 					};
 				};
 			};
@@ -198,6 +212,7 @@
 				A10000000000000000000002 /* NativeYouTubePlayerViewController.swift in Sources */,
 				A10000000000000000000004 /* NativeYouTubePlugin.swift in Sources */,
 				A10000000000000000000006 /* NativeYouTubeViewController.swift in Sources */,
+				A20000000000000000000002 /* NativeFcmTokenPlugin.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -337,6 +352,8 @@
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				APS_ENVIRONMENT = development;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 53T3372XDJ;
@@ -360,6 +377,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				APS_ENVIRONMENT = production;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 53T3372XDJ;
@@ -450,6 +469,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 40FC37BC2FFED46E0056B4EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignInSwift;
+		};
+		A20000000000000000000003 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 40FC37BB2FFEAF030056B4EE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		A20000000000000000000005 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 40FC37BB2FFEAF030056B4EE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
 		};
 		4D22ABE82AF431CB00220026 /* CapApp-SPM */ = {
 			isa = XCSwiftPackageProductDependency;

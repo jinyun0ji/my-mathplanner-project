@@ -1,9 +1,16 @@
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 import { db, firebaseApp } from '../firebase/client';
 import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
 
 const WEB_VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY || '';
+const NATIVE_REGISTRATION_TIMEOUT_MS = 30000;
+const NativeFcmToken = registerPlugin('NativeFcmToken');
+const isDevelopment = process.env.NODE_ENV === 'development';
+const debugNative = (message, details) => {
+  if (isDevelopment) console.info(`[push][native] ${message}`, details || '');
+};
 
 const getBrowserPushToken = async () => {
   if (!firebaseApp || !(await isSupported())) return null;
@@ -19,35 +26,106 @@ const getBrowserPushToken = async () => {
   return getToken(getMessaging(firebaseApp), { vapidKey: WEB_VAPID_KEY });
 };
 
-const getNativePushToken = async () => {
+const waitForNativeRegistration = async (PushNotifications, timeoutMs) => new Promise((resolve) => {
+  let settled = false;
+  let timeout;
+  const handles = [];
+  const finish = async (result) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timeout);
+    await Promise.all(handles.map((handle) => handle?.remove?.()));
+    resolve(result);
+  };
+
+  Promise.all([
+    PushNotifications.addListener('registration', (token) => finish({ registered: true, token: token?.value })),
+    PushNotifications.addListener('registrationError', (error) => {
+      console.warn('[push][native] registration error', error);
+      finish({ registered: false });
+    }),
+  ]).then((listenerHandles) => {
+    handles.push(...listenerHandles);
+    debugNative('registering');
+    PushNotifications.register();
+    timeout = setTimeout(() => {
+      debugNative('timeout', { timeoutMs });
+      finish({ registered: false });
+    }, timeoutMs);
+  }).catch((error) => {
+    console.warn('[push][native] registration error', error);
+    finish({ registered: false });
+  });
+});
+
+export const getNativePushToken = async ({ timeoutMs = NATIVE_REGISTRATION_TIMEOUT_MS } = {}) => {
   if (!isCapacitorNativeEnvironment()) return null;
+  const platform = Capacitor.getPlatform();
+  debugNative('environment detected', { platform });
   try {
     const importNativePlugin = new Function('specifier', 'return import(specifier)');
     const mod = await importNativePlugin('@capacitor/push-notifications');
     const PushNotifications = mod.PushNotifications;
     const permission = await PushNotifications.requestPermissions();
+    debugNative('permission status', { receive: permission.receive });
     if (permission.receive !== 'granted') return null;
 
-    return await new Promise((resolve) => {
-      let settled = false;
-      const finish = async (value) => {
-        if (settled) return;
-        settled = true;
-        resolve(value || null);
-      };
-      PushNotifications.addListener('registration', (token) => finish(token?.value));
-      PushNotifications.addListener('registrationError', (error) => {
-        console.warn('[push] native registration failed', error);
-        finish(null);
-      });
-      PushNotifications.register();
-      setTimeout(() => finish(null), 10000);
-    });
+    const result = await waitForNativeRegistration(PushNotifications, timeoutMs);
+    if (!result.registered) return null;
+    debugNative('registration success');
+
+    // Android's Capacitor event is already an FCM token. Step 2 changes only
+    // the iOS conversion path and leaves this existing behavior untouched.
+    if (platform !== 'ios') return result.token || null;
+
+    // Capacitor's iOS registration event proves APNs registration. The native
+    // Firebase Messaging bridge then returns the FCM token stored by this app.
+    const response = await NativeFcmToken.getToken();
+    const token = String(response?.token || '');
+    if (!token) return null;
+    debugNative('FCM token ready', { tokenPrefix: token.slice(0, 8), tokenLength: token.length });
+    return token;
   } catch (error) {
-    console.info('[push] native push plugin not ready. Install @capacitor/push-notifications and configure APNs/FCM.', error?.message || error);
+    console.warn('[push][native] registration error', error?.message || error);
     return null;
   }
 };
+
+export const createPushTokenRegistry = ({
+  isNative = isCapacitorNativeEnvironment,
+  getNativeToken = getNativePushToken,
+  getWebToken = getBrowserPushToken,
+  save = (uid, token, platform) => setDoc(doc(db, 'users', uid, 'fcmTokens', token), {
+    token, platform, updatedAt: serverTimestamp(),
+  }, { merge: true }),
+  remove = (uid, token) => deleteDoc(doc(db, 'users', uid, 'fcmTokens', token)),
+} = {}) => ({
+  async register(authUid) {
+    const uid = String(authUid || '').trim();
+    if (!uid) return null;
+    const native = isNative();
+    const token = native ? await getNativeToken() : await getWebToken();
+    if (!token) return null;
+    if (native) debugNative('firestore token owner', { authUid: uid });
+    try {
+      await save(uid, token, native ? 'ios' : 'web');
+      if (native) debugNative('firestore token stored');
+      return token;
+    } catch (error) {
+      console.warn('[push] Firestore token write failed', { authUid: uid, error });
+      throw error;
+    }
+  },
+  async unregister(authUid, token) {
+    const uid = String(authUid || '').trim();
+    if (!uid || !token) return;
+    await remove(uid, token);
+  },
+});
+
+const registry = createPushTokenRegistry();
+export const registerDevicePushToken = (authUid) => registry.register(authUid);
+export const unregisterDevicePushToken = (authUid, token) => registry.unregister(authUid, token);
 
 export const initializePushNotificationInteractions = async (onOpenNotificationCenter) => {
   const openCenter = (payload) => {
@@ -58,12 +136,10 @@ export const initializePushNotificationInteractions = async (onOpenNotificationC
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };
-
   if (isCapacitorNativeEnvironment()) {
     try {
       const importNativePlugin = new Function('specifier', 'return import(specifier)');
-      const mod = await importNativePlugin('@capacitor/push-notifications');
-      const PushNotifications = mod.PushNotifications;
+      const { PushNotifications } = await importNativePlugin('@capacitor/push-notifications');
       await PushNotifications.addListener('pushNotificationReceived', (notification) => {
         console.info('[push] foreground notification received', notification);
       });
@@ -73,32 +149,5 @@ export const initializePushNotificationInteractions = async (onOpenNotificationC
     }
     return;
   }
-
   window.addEventListener('appNotificationClick', (event) => openCenter(event?.detail));
 };
-
-export const registerDevicePushToken = async (authUid) => {
-  const uid = String(authUid || '').trim();
-  if (!uid) return null;
-  const token = isCapacitorNativeEnvironment() ? await getNativePushToken() : await getBrowserPushToken();
-  if (!token) return null;
-  await setDoc(doc(db, 'users', uid, 'fcmTokens', token), {
-    token,
-    platform: isCapacitorNativeEnvironment() ? 'capacitor' : 'web',
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
-  return token;
-};
-
-export const unregisterDevicePushToken = async (authUid, token) => {
-  const uid = String(authUid || '').trim();
-  if (!uid || !token) return;
-  await deleteDoc(doc(db, 'users', uid, 'fcmTokens', token));
-};
-
-export const PUSH_SETUP_TODOS = [
-  'Firebase Console: iOS 앱에 APNs Authentication Key 등록',
-  'Xcode: Signing & Capabilities에서 Push Notifications 및 Background Modes(Remote notifications) 활성화',
-  '앱 패키지: @capacitor/push-notifications 설치 후 npx cap sync 실행',
-  '웹 푸시: REACT_APP_FIREBASE_VAPID_KEY 환경변수 설정 및 firebase-messaging-sw.js 배포 확인',
-];

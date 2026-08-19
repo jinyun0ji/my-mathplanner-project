@@ -202,7 +202,13 @@ export default function AppRoutes({ user, role, studentIds }) {
       let registeredToken = null;
       registerDevicePushToken(userId)
           .then((token) => {
-              if (!active) return;
+              if (!active) {
+                  if (token) {
+                      unregisterDevicePushToken(userId, token)
+                          .catch((error) => console.warn('[push] token cleanup failed', error));
+                  }
+                  return;
+              }
               registeredToken = token;
           })
           .catch((error) => console.warn('[push] token registration skipped', error));
