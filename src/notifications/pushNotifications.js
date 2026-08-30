@@ -1,3 +1,4 @@
+import { PushNotifications } from '@capacitor/push-notifications';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { getMessaging, getToken, isSupported } from 'firebase/messaging';
@@ -7,9 +8,8 @@ import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
 const WEB_VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY || '';
 const NATIVE_REGISTRATION_TIMEOUT_MS = 30000;
 const NativeFcmToken = registerPlugin('NativeFcmToken');
-const isDevelopment = process.env.NODE_ENV === 'development';
 const debugNative = (message, details) => {
-  if (isDevelopment) console.info(`[push][native] ${message}`, details || '');
+  console.info(`[push][native] ${message}`, details || '');
 };
 
 const getBrowserPushToken = async () => {
@@ -63,9 +63,6 @@ export const getNativePushToken = async ({ timeoutMs = NATIVE_REGISTRATION_TIMEO
   const platform = Capacitor.getPlatform();
   debugNative('environment detected', { platform });
   try {
-    const importNativePlugin = new Function('specifier', 'return import(specifier)');
-    const mod = await importNativePlugin('@capacitor/push-notifications');
-    const PushNotifications = mod.PushNotifications;
     const permission = await PushNotifications.requestPermissions();
     debugNative('permission status', { receive: permission.receive });
     if (permission.receive !== 'granted') return null;
@@ -83,7 +80,7 @@ export const getNativePushToken = async ({ timeoutMs = NATIVE_REGISTRATION_TIMEO
     const response = await NativeFcmToken.getToken();
     const token = String(response?.token || '');
     if (!token) return null;
-    debugNative('FCM token ready', { tokenPrefix: token.slice(0, 8), tokenLength: token.length });
+    debugNative('FCM token ready', { tokenLength: token.length });
     return token;
   } catch (error) {
     console.warn('[push][native] registration error', error?.message || error);
@@ -138,8 +135,6 @@ export const initializePushNotificationInteractions = async (onOpenNotificationC
   };
   if (isCapacitorNativeEnvironment()) {
     try {
-      const importNativePlugin = new Function('specifier', 'return import(specifier)');
-      const { PushNotifications } = await importNativePlugin('@capacitor/push-notifications');
       await PushNotifications.addListener('pushNotificationReceived', (notification) => {
         console.info('[push] foreground notification received', notification);
       });

@@ -1,794 +1,23 @@
-diff --git a/docs/ios-native-push-step-2.md b/docs/ios-native-push-step-2.md
-new file mode 100644
-index 0000000000000000000000000000000000000000..c0efdb73dfb957275014b1f8e494166abbffe91a
---- /dev/null
-+++ b/docs/ios-native-push-step-2.md
-@@ -0,0 +1,37 @@
-+# Step 2 — iOS native push registration
-+
-+## Repository configuration
-+
-+- App bundle ID: `com.chaesooyong.management` (matches `GoogleService-Info.plist`).
-+- iOS deployment target: 15.0.
-+- The Capacitor project uses Swift Package Manager (`CapApp-SPM`), not CocoaPods.
-+- `CapacitorPushNotifications`, Firebase Core, and Firebase Messaging are native dependencies.
-+- Debug signing uses `aps-environment=development`; Release uses `aps-environment=production` through the `APS_ENVIRONMENT` build setting.
-+- Push Notifications is declared as a target capability. Background Modes / Remote notifications is intentionally not enabled: initial registration and ordinary visible notifications do not require background notification processing.
-+- `GoogleService-Info.plist` is included in the App target's Resources phase. `FirebaseApp.configure()` runs once at app launch. The AppDelegate forwards APNs success/failure to Capacitor and assigns the APNs token to Firebase Messaging.
-+- The Capacitor `registration` event confirms APNs registration. The native `NativeFcmToken` bridge then obtains the Firebase Messaging registration token; only that FCM token is stored.
-+
-+## Console and signing prerequisites (user verification required)
-+
-+Repository files cannot prove these external settings. Verify all of them before device testing:
-+
-+1. **Firebase Console → Project settings → Your apps:** the iOS app is `com.chaesooyong.management`.
-+2. **Firebase Console → Project settings → Cloud Messaging:** upload an active APNs authentication `.p8` key and verify its Key ID and Apple Team ID (`53T3372XDJ`). A single APNs authentication key can cover development and production; keep the private `.p8` file outside this repository.
-+3. **Apple Developer → Identifiers:** the explicit App ID for `com.chaesooyong.management` has Push Notifications enabled.
-+4. Regenerate/refresh provisioning profiles after enabling the capability, if existing profiles predate it.
-+5. **Xcode → App → Signing & Capabilities:** select the correct Team, confirm automatic signing/profiles resolve, and confirm Push Notifications appears. Do not add Background Modes for this registration-only step.
-+
-+## Physical iPhone test
-+
-+1. On a networked development machine run `npm install --legacy-peer-deps`, `npm run build`, and `npx cap sync ios`. The last command must report `@capacitor/push-notifications@6.x` under iOS plugins.
-+2. Open `ios/App/App.xcodeproj` in Xcode (this repository is SPM-based and has no `.xcworkspace` to open). Wait for Swift packages to resolve.
-+3. Select the App scheme and a **physical iPhone**, with the correct Signing Team. Do not use Simulator for acceptance.
-+4. For a clean permission test, delete the existing app from the iPhone, then Build & Run. Reinstalling is recommended when capability/provisioning or notification permission state changed.
-+5. Log in. The logged-in Firebase `user.uid` is the canonical token owner.
-+6. Accept the iOS notification permission prompt.
-+7. In the Xcode console, verify the development-only sequence: `[push][native] environment detected`, `permission status`, `registering`, `registration success`, `FCM token ready` (only prefix and length), `firestore token owner`, and `firestore token stored`.
-+8. In Firestore verify `users/{AUTH_UID}/fcmTokens/{TOKEN}`. The document ID and `token` field are the same FCM token; `platform` is `ios`; `updatedAt` is a server timestamp.
-+
-+Success means the physical device produces the Capacitor registration event, Firebase Messaging returns a non-empty FCM token, and that exact token exists under the logged-in Firebase Auth UID. This step does not send a notification and does not enable `NOTIFICATION_SENDING_ENABLED`.
-+
-+If it fails, collect the complete Xcode console segment from app launch through the `registration error` or `timeout` line (redact full tokens), notification permission status, bundle ID, selected Team/profile name, iOS version/device model, and any Firebase Messaging/APNs or Firestore error. Also report which expected log line was the last one observed.
-diff --git a/ios/App/App.xcodeproj/project.pbxproj b/ios/App/App.xcodeproj/project.pbxproj
-index 25c4450a1318a8a9eb370c63b81709d6e509244d..cc9587779e5dabbf2e706c5580394aa2616383d1 100644
---- a/ios/App/App.xcodeproj/project.pbxproj
-+++ b/ios/App/App.xcodeproj/project.pbxproj
-@@ -1,171 +1,185 @@
- // !$*UTF8*$!
- {
- 	archiveVersion = 1;
- 	classes = {
- 	};
- 	objectVersion = 60;
- 	objects = {
- 
- /* Begin PBXBuildFile section */
- 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
- 		40E8BF1C2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper in Frameworks */ = {isa = PBXBuildFile; productRef = 40E8BF1B2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper */; };
- 		40FC37BA2FFEAEA10056B4EE /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 40FC37B92FFEAEA10056B4EE /* GoogleService-Info.plist */; };
- 		40FC37BE2FFED46E0056B4EE /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 40FC37BD2FFED46E0056B4EE /* GoogleSignIn */; };
- 		40FC37C02FFED46E0056B4EE /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 40FC37BF2FFED46E0056B4EE /* GoogleSignInSwift */; };
- 		40FC37C22FFED6530056B4EE /* NativeGoogleAuthPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40FC37C12FFED6530056B4EE /* NativeGoogleAuthPlugin.swift */; };
- 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
- 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
- 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
- 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
- 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
- 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
- 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
- 		A10000000000000000000002 /* NativeYouTubePlayerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */; };
- 		A10000000000000000000004 /* NativeYouTubePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000003 /* NativeYouTubePlugin.swift */; };
- 		A10000000000000000000006 /* NativeYouTubeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000005 /* NativeYouTubeViewController.swift */; };
-+		A20000000000000000000002 /* NativeFcmTokenPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* NativeFcmTokenPlugin.swift */; };
-+		A20000000000000000000004 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000003 /* FirebaseCore */; };
-+		A20000000000000000000006 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000005 /* FirebaseMessaging */; };
- /* End PBXBuildFile section */
- 
- /* Begin PBXFileReference section */
- 		2C3CDE8C358E0238F4ACBC20 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
- 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
- 		40FC37B92FFEAEA10056B4EE /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
- 		40FC37C12FFED6530056B4EE /* NativeGoogleAuthPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeGoogleAuthPlugin.swift; sourceTree = "<group>"; };
- 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
- 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
- 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
- 		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
- 		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
- 		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
- 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
- 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
- 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
- 		A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeYouTubePlayerViewController.swift; sourceTree = "<group>"; };
- 		A10000000000000000000003 /* NativeYouTubePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeYouTubePlugin.swift; sourceTree = "<group>"; };
- 		A10000000000000000000005 /* NativeYouTubeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeYouTubeViewController.swift; sourceTree = "<group>"; };
-+		A20000000000000000000001 /* NativeFcmTokenPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeFcmTokenPlugin.swift; sourceTree = "<group>"; };
-+		A20000000000000000000007 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
- /* End PBXFileReference section */
- 
- /* Begin PBXFrameworksBuildPhase section */
- 		504EC3011FED79650016851F /* Frameworks */ = {
- 			isa = PBXFrameworksBuildPhase;
- 			buildActionMask = 2147483647;
- 			files = (
- 				4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */,
-+				A20000000000000000000004 /* FirebaseCore in Frameworks */,
-+				A20000000000000000000006 /* FirebaseMessaging in Frameworks */,
- 				40E8BF1C2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper in Frameworks */,
- 				40FC37BE2FFED46E0056B4EE /* GoogleSignIn in Frameworks */,
- 				40FC37C02FFED46E0056B4EE /* GoogleSignInSwift in Frameworks */,
- 			);
- 			runOnlyForDeploymentPostprocessing = 0;
- 		};
- /* End PBXFrameworksBuildPhase section */
- 
- /* Begin PBXGroup section */
- 		504EC2FB1FED79650016851F = {
- 			isa = PBXGroup;
- 			children = (
- 				958DCC722DB07C7200EA8C5F /* debug.xcconfig */,
- 				504EC3061FED79650016851F /* App */,
- 				504EC3051FED79650016851F /* Products */,
- 				E42EE442F6594071C4F668F1 /* Frameworks */,
- 			);
- 			sourceTree = "<group>";
- 		};
- 		504EC3051FED79650016851F /* Products */ = {
- 			isa = PBXGroup;
- 			children = (
- 				504EC3041FED79650016851F /* App.app */,
- 			);
- 			name = Products;
- 			sourceTree = "<group>";
- 		};
- 		504EC3061FED79650016851F /* App */ = {
- 			isa = PBXGroup;
- 			children = (
- 				40FC37C12FFED6530056B4EE /* NativeGoogleAuthPlugin.swift */,
-+				A20000000000000000000001 /* NativeFcmTokenPlugin.swift */,
-+				A20000000000000000000007 /* App.entitlements */,
- 				50379B222058CBB4000EE86E /* capacitor.config.json */,
- 				504EC3071FED79650016851F /* AppDelegate.swift */,
- 				A10000000000000000000001 /* NativeYouTubePlayerViewController.swift */,
- 				A10000000000000000000003 /* NativeYouTubePlugin.swift */,
- 				A10000000000000000000005 /* NativeYouTubeViewController.swift */,
- 				504EC30B1FED79650016851F /* Main.storyboard */,
- 				504EC30E1FED79650016851F /* Assets.xcassets */,
- 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
- 				504EC3131FED79650016851F /* Info.plist */,
- 				2FAD9762203C412B000D30F8 /* config.xml */,
- 				50B271D01FEDC1A000F3C39B /* public */,
- 				40FC37B92FFEAEA10056B4EE /* GoogleService-Info.plist */,
- 			);
- 			path = App;
- 			sourceTree = "<group>";
- 		};
- 		E42EE442F6594071C4F668F1 /* Frameworks */ = {
- 			isa = PBXGroup;
- 			children = (
- 				2C3CDE8C358E0238F4ACBC20 /* Pods_App.framework */,
- 			);
- 			name = Frameworks;
- 			sourceTree = "<group>";
- 		};
- /* End PBXGroup section */
- 
- /* Begin PBXNativeTarget section */
- 		504EC3031FED79650016851F /* App */ = {
- 			isa = PBXNativeTarget;
- 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
- 			buildPhases = (
- 				504EC3001FED79650016851F /* Sources */,
- 				504EC3011FED79650016851F /* Frameworks */,
- 				504EC3021FED79650016851F /* Resources */,
- 			);
- 			buildRules = (
- 			);
- 			dependencies = (
- 			);
- 			name = App;
- 			packageProductDependencies = (
- 				4D22ABE82AF431CB00220026 /* CapApp-SPM */,
- 				40E8BF1B2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper */,
- 				40FC37BD2FFED46E0056B4EE /* GoogleSignIn */,
- 				40FC37BF2FFED46E0056B4EE /* GoogleSignInSwift */,
-+				A20000000000000000000003 /* FirebaseCore */,
-+				A20000000000000000000005 /* FirebaseMessaging */,
- 			);
- 			productName = App;
- 			productReference = 504EC3041FED79650016851F /* App.app */;
- 			productType = "com.apple.product-type.application";
- 		};
- /* End PBXNativeTarget section */
- 
- /* Begin PBXProject section */
- 		504EC2FC1FED79650016851F /* Project object */ = {
- 			isa = PBXProject;
- 			attributes = {
- 				LastSwiftUpdateCheck = 0920;
- 				LastUpgradeCheck = 0920;
- 				TargetAttributes = {
- 					504EC3031FED79650016851F = {
- 						CreatedOnToolsVersion = 9.2;
- 						LastSwiftMigration = 1100;
- 						ProvisioningStyle = Automatic;
-+						SystemCapabilities = {
-+							com.apple.Push = { enabled = 1; };
-+						};
- 					};
- 				};
- 			};
- 			buildConfigurationList = 504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */;
- 			compatibilityVersion = "Xcode 8.0";
- 			developmentRegion = en;
- 			hasScannedForEncodings = 0;
- 			knownRegions = (
- 				en,
- 				Base,
- 			);
- 			mainGroup = 504EC2FB1FED79650016851F;
- 			packageReferences = (
- 				D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */,
- 				40E8BF1A2FFAA1190052F7E1 /* XCRemoteSwiftPackageReference "youtube-ios-player-helper" */,
- 				40FC37BB2FFEAF030056B4EE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
- 				40FC37BC2FFED46E0056B4EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
- 			);
- 			productRefGroup = 504EC3051FED79650016851F /* Products */;
- 			projectDirPath = "";
- 			projectRoot = "";
- 			targets = (
- 				504EC3031FED79650016851F /* App */,
- 			);
- 		};
-@@ -176,50 +190,51 @@
- 			isa = PBXResourcesBuildPhase;
- 			buildActionMask = 2147483647;
- 			files = (
- 				504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */,
- 				50B271D11FEDC1A000F3C39B /* public in Resources */,
- 				504EC30F1FED79650016851F /* Assets.xcassets in Resources */,
- 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
- 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
- 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
- 				40FC37BA2FFEAEA10056B4EE /* GoogleService-Info.plist in Resources */,
- 			);
- 			runOnlyForDeploymentPostprocessing = 0;
- 		};
- /* End PBXResourcesBuildPhase section */
- 
- /* Begin PBXSourcesBuildPhase section */
- 		504EC3001FED79650016851F /* Sources */ = {
- 			isa = PBXSourcesBuildPhase;
- 			buildActionMask = 2147483647;
- 			files = (
- 				40FC37C22FFED6530056B4EE /* NativeGoogleAuthPlugin.swift in Sources */,
- 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
- 				A10000000000000000000002 /* NativeYouTubePlayerViewController.swift in Sources */,
- 				A10000000000000000000004 /* NativeYouTubePlugin.swift in Sources */,
- 				A10000000000000000000006 /* NativeYouTubeViewController.swift in Sources */,
-+				A20000000000000000000002 /* NativeFcmTokenPlugin.swift in Sources */,
- 			);
- 			runOnlyForDeploymentPostprocessing = 0;
- 		};
- /* End PBXSourcesBuildPhase section */
- 
- /* Begin PBXVariantGroup section */
- 		504EC30B1FED79650016851F /* Main.storyboard */ = {
- 			isa = PBXVariantGroup;
- 			children = (
- 				504EC30C1FED79650016851F /* Base */,
- 			);
- 			name = Main.storyboard;
- 			sourceTree = "<group>";
- 		};
- 		504EC3101FED79650016851F /* LaunchScreen.storyboard */ = {
- 			isa = PBXVariantGroup;
- 			children = (
- 				504EC3111FED79650016851F /* Base */,
- 			);
- 			name = LaunchScreen.storyboard;
- 			sourceTree = "<group>";
- 		};
- /* End PBXVariantGroup section */
- 
- /* Begin XCBuildConfiguration section */
-@@ -315,73 +330,77 @@
- 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
- 				ENABLE_NS_ASSERTIONS = NO;
- 				ENABLE_STRICT_OBJC_MSGSEND = YES;
- 				GCC_C_LANGUAGE_STANDARD = gnu11;
- 				GCC_NO_COMMON_BLOCKS = YES;
- 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
- 				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
- 				GCC_WARN_UNDECLARED_SELECTOR = YES;
- 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
- 				GCC_WARN_UNUSED_FUNCTION = YES;
- 				GCC_WARN_UNUSED_VARIABLE = YES;
- 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
- 				MTL_ENABLE_DEBUG_INFO = NO;
- 				SDKROOT = iphoneos;
- 				SWIFT_COMPILATION_MODE = wholemodule;
- 				SWIFT_OPTIMIZATION_LEVEL = "-O";
- 				VALIDATE_PRODUCT = YES;
- 			};
- 			name = Release;
- 		};
- 		504EC3171FED79650016851F /* Debug */ = {
- 			isa = XCBuildConfiguration;
- 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
- 			buildSettings = {
- 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-+				APS_ENVIRONMENT = development;
-+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
- 				CODE_SIGN_STYLE = Automatic;
- 				CURRENT_PROJECT_VERSION = 1;
- 				DEVELOPMENT_TEAM = 53T3372XDJ;
- 				INFOPLIST_FILE = App/Info.plist;
- 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
- 				LD_RUNPATH_SEARCH_PATHS = (
- 					"$(inherited)",
- 					"@executable_path/Frameworks",
- 				);
- 				MARKETING_VERSION = 1.0;
- 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
- 				PRODUCT_BUNDLE_IDENTIFIER = com.chaesooyong.management;
- 				PRODUCT_NAME = "$(TARGET_NAME)";
- 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
- 				SWIFT_VERSION = 5.0;
- 				TARGETED_DEVICE_FAMILY = "1,2";
- 			};
- 			name = Debug;
- 		};
- 		504EC3181FED79650016851F /* Release */ = {
- 			isa = XCBuildConfiguration;
- 			buildSettings = {
- 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-+				APS_ENVIRONMENT = production;
-+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
- 				CODE_SIGN_STYLE = Automatic;
- 				CURRENT_PROJECT_VERSION = 1;
- 				DEVELOPMENT_TEAM = 53T3372XDJ;
- 				INFOPLIST_FILE = App/Info.plist;
- 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
- 				LD_RUNPATH_SEARCH_PATHS = (
- 					"$(inherited)",
- 					"@executable_path/Frameworks",
- 				);
- 				MARKETING_VERSION = 1.0;
- 				PRODUCT_BUNDLE_IDENTIFIER = com.chaesooyong.management;
- 				PRODUCT_NAME = "$(TARGET_NAME)";
- 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
- 				SWIFT_VERSION = 5.0;
- 				TARGETED_DEVICE_FAMILY = "1,2";
- 			};
- 			name = Release;
- 		};
- /* End XCBuildConfiguration section */
- 
- /* Begin XCConfigurationList section */
- 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
- 			isa = XCConfigurationList;
- 			buildConfigurations = (
- 				504EC3141FED79650016851F /* Debug */,
-@@ -429,34 +448,44 @@
- 			isa = XCRemoteSwiftPackageReference;
- 			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
- 			requirement = {
- 				kind = upToNextMajorVersion;
- 				minimumVersion = 9.2.0;
- 			};
- 		};
- /* End XCRemoteSwiftPackageReference section */
- 
- /* Begin XCSwiftPackageProductDependency section */
- 		40E8BF1B2FFAA1190052F7E1 /* YouTubeiOSPlayerHelper */ = {
- 			isa = XCSwiftPackageProductDependency;
- 			package = 40E8BF1A2FFAA1190052F7E1 /* XCRemoteSwiftPackageReference "youtube-ios-player-helper" */;
- 			productName = YouTubeiOSPlayerHelper;
- 		};
- 		40FC37BD2FFED46E0056B4EE /* GoogleSignIn */ = {
- 			isa = XCSwiftPackageProductDependency;
- 			package = 40FC37BC2FFED46E0056B4EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
- 			productName = GoogleSignIn;
- 		};
- 		40FC37BF2FFED46E0056B4EE /* GoogleSignInSwift */ = {
- 			isa = XCSwiftPackageProductDependency;
- 			package = 40FC37BC2FFED46E0056B4EE /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
- 			productName = GoogleSignInSwift;
- 		};
-+		A20000000000000000000003 /* FirebaseCore */ = {
-+			isa = XCSwiftPackageProductDependency;
-+			package = 40FC37BB2FFEAF030056B4EE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-+			productName = FirebaseCore;
-+		};
-+		A20000000000000000000005 /* FirebaseMessaging */ = {
-+			isa = XCSwiftPackageProductDependency;
-+			package = 40FC37BB2FFEAF030056B4EE /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-+			productName = FirebaseMessaging;
-+		};
- 		4D22ABE82AF431CB00220026 /* CapApp-SPM */ = {
- 			isa = XCSwiftPackageProductDependency;
- 			package = D4C12C0A2AAA248700AAC8A2 /* XCLocalSwiftPackageReference "CapApp-SPM" */;
- 			productName = "CapApp-SPM";
- 		};
- /* End XCSwiftPackageProductDependency section */
- 	};
- 	rootObject = 504EC2FC1FED79650016851F /* Project object */;
- }
-diff --git a/ios/App/App/App.entitlements b/ios/App/App/App.entitlements
-new file mode 100644
-index 0000000000000000000000000000000000000000..6a26dfe49d6664a68a387d4fc0d46bea22fccc41
---- /dev/null
-+++ b/ios/App/App/App.entitlements
-@@ -0,0 +1,8 @@
-+<?xml version="1.0" encoding="UTF-8"?>
-+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-+<plist version="1.0">
-+<dict>
-+	<key>aps-environment</key>
-+	<string>$(APS_ENVIRONMENT)</string>
-+</dict>
-+</plist>
-diff --git a/ios/App/App/AppDelegate.swift b/ios/App/App/AppDelegate.swift
-index 0671c8fbd1f130f92694825c9e94fb32061301b2..859029f87f119cc3e1c5f28f4cb4d363131f9785 100644
---- a/ios/App/App/AppDelegate.swift
-+++ b/ios/App/App/AppDelegate.swift
-@@ -1,40 +1,56 @@
- import UIKit
- import Capacitor
- import GoogleSignIn
-+import FirebaseCore
-+import FirebaseMessaging
- 
- @UIApplicationMain
- class AppDelegate: UIResponder, UIApplicationDelegate {
- 
-     var window: UIWindow?
- 
-     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-+        if FirebaseApp.app() == nil {
-+            FirebaseApp.configure()
-+        }
-         // Native Capacitor plugins that require explicit registration are registered in
-         // NativeYouTubeViewController.capacitorDidLoad(), where the CAPBridge is available.
-         return true
-     }
- 
-+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-+        // Capacitor emits its registration event from this notification. Firebase
-+        // Messaging also needs the same APNs token before it can mint an FCM token.
-+        Messaging.messaging().apnsToken = deviceToken
-+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
-+    }
-+
-+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
-+        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
-+    }
-+
-     func applicationWillResignActive(_ application: UIApplication) {
-         // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
-         // Use this method to pause ongoing tasks, disable timers, and invalidate graphics rendering callbacks. Games should use this method to pause the game.
-     }
- 
-     func applicationDidEnterBackground(_ application: UIApplication) {
-         // Use this method to release shared resources, save user data, invalidate timers, and store enough application state information to restore your application to its current state in case it is terminated later.
-         // If your application supports background execution, this method is called instead of applicationWillTerminate: when the user quits.
-     }
- 
-     func applicationWillEnterForeground(_ application: UIApplication) {
-         // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
-     }
- 
-     func applicationDidBecomeActive(_ application: UIApplication) {
-         // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
-     }
- 
-     func applicationWillTerminate(_ application: UIApplication) {
-         // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
-     }
- 
-     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-         if GIDSignIn.sharedInstance.handle(url) {
-             return true
-diff --git a/ios/App/App/NativeFcmTokenPlugin.swift b/ios/App/App/NativeFcmTokenPlugin.swift
-new file mode 100644
-index 0000000000000000000000000000000000000000..19d4a585644d7a9770113853d8cff171fd396075
---- /dev/null
-+++ b/ios/App/App/NativeFcmTokenPlugin.swift
-@@ -0,0 +1,28 @@
-+import Capacitor
-+import FirebaseMessaging
-+import Foundation
-+
-+/// Converts the APNs registration completed by CapacitorPushNotifications into
-+/// the FCM registration token used by the server-side token registry.
-+@objc(NativeFcmTokenPlugin)
-+public class NativeFcmTokenPlugin: CAPPlugin, CAPBridgedPlugin {
-+    public let identifier = "NativeFcmTokenPlugin"
-+    public let jsName = "NativeFcmToken"
-+    public let pluginMethods: [CAPPluginMethod] = [
-+        CAPPluginMethod(name: "getToken", returnType: CAPPluginReturnPromise)
-+    ]
-+
-+    @objc func getToken(_ call: CAPPluginCall) {
-+        Messaging.messaging().token { token, error in
-+            if let error = error {
-+                call.reject("FCM registration token is unavailable", "push/fcm-token-unavailable", error)
-+                return
-+            }
-+            guard let token = token, !token.isEmpty else {
-+                call.reject("FCM registration token is empty", "push/fcm-token-empty")
-+                return
-+            }
-+            call.resolve(["token": token])
-+        }
-+    }
-+}
-diff --git a/ios/App/App/NativeYouTubeViewController.swift b/ios/App/App/NativeYouTubeViewController.swift
-index 54accbcad3ca6952aca1c624a285ae2fe588f827..1228a58e053555c4df90c624b79fab56a0fcf905 100644
---- a/ios/App/App/NativeYouTubeViewController.swift
-+++ b/ios/App/App/NativeYouTubeViewController.swift
-@@ -1,12 +1,14 @@
- import Capacitor
- import UIKit
- 
- class NativeYouTubeViewController: CAPBridgeViewController {
-     override func capacitorDidLoad() {
-         super.capacitorDidLoad()
-         bridge?.registerPluginInstance(NativeYouTubePlugin())
-         bridge?.registerPluginInstance(NativeGoogleAuthPlugin())
-+        bridge?.registerPluginInstance(NativeFcmTokenPlugin())
-         print("[NativeYouTubePlugin] registered")
-         print("[NativeGoogleAuthPlugin] registered")
-+        print("[NativeFcmTokenPlugin] registered")
-     }
- }
-diff --git a/ios/App/CapApp-SPM/Package.swift b/ios/App/CapApp-SPM/Package.swift
-index 49e33c32bc40e1d494ddb03b2eba4a0164878bf8..8316e72fe039add69fbd141930b797ec807ac71b 100644
---- a/ios/App/CapApp-SPM/Package.swift
-+++ b/ios/App/CapApp-SPM/Package.swift
-@@ -1,33 +1,35 @@
- // swift-tools-version: 5.9
- import PackageDescription
- 
- // DO NOT MODIFY THIS FILE - managed by Capacitor CLI commands
- let package = Package(
-     name: "CapApp-SPM",
-     platforms: [.iOS(.v15)],
-     products: [
-         .library(
-             name: "CapApp-SPM",
-             targets: ["CapApp-SPM"])
-     ],
-     dependencies: [
-         .package(url: "https://github.com/ionic-team/capacitor-swift-pm.git", exact: "6.2.1"),
-         .package(name: "CapacitorApp", path: "../../../node_modules/@capacitor/app"),
-         .package(name: "CapacitorKeyboard", path: "../../../node_modules/@capacitor/keyboard"),
-+        .package(name: "CapacitorPushNotifications", path: "../../../node_modules/@capacitor/push-notifications"),
-         .package(name: "CapacitorSplashScreen", path: "../../../node_modules/@capacitor/splash-screen"),
-         .package(name: "CapacitorStatusBar", path: "../../../node_modules/@capacitor/status-bar")
-     ],
-     targets: [
-         .target(
-             name: "CapApp-SPM",
-             dependencies: [
-                 .product(name: "Capacitor", package: "capacitor-swift-pm"),
-                 .product(name: "Cordova", package: "capacitor-swift-pm"),
-                 .product(name: "CapacitorApp", package: "CapacitorApp"),
-                 .product(name: "CapacitorKeyboard", package: "CapacitorKeyboard"),
-+                .product(name: "CapacitorPushNotifications", package: "CapacitorPushNotifications"),
-                 .product(name: "CapacitorSplashScreen", package: "CapacitorSplashScreen"),
-                 .product(name: "CapacitorStatusBar", package: "CapacitorStatusBar")
-             ]
-         )
-     ]
- )
-diff --git a/package-lock.json b/package-lock.json
-index 8d4d2aa1cb0b9e1de2ef16e55b10c131c74b1770..8aff9ecec81c7e7fd8befb23667cbd6ee2304a20 100644
---- a/package-lock.json
-+++ b/package-lock.json
-@@ -1,67 +1,67 @@
- {
-   "name": "management_ver_2",
-   "version": "0.1.0",
-   "lockfileVersion": 3,
-   "requires": true,
-   "packages": {
-     "": {
-       "name": "management_ver_2",
-       "version": "0.1.0",
-       "dependencies": {
-         "@capacitor/android": "^6.2.0",
-         "@capacitor/app": "^6.0.2",
-         "@capacitor/cli": "^6.2.0",
-         "@capacitor/core": "^6.2.0",
-         "@capacitor/ios": "^6.2.0",
-         "@capacitor/keyboard": "^6.0.3",
-+        "@capacitor/push-notifications": "^6.0.3",
-         "@capacitor/splash-screen": "^6.0.2",
-         "@capacitor/status-bar": "^6.0.2",
-         "@dnd-kit/core": "^6.3.1",
-         "@dnd-kit/sortable": "^10.0.0",
-         "@dnd-kit/utilities": "^3.2.2",
-         "@emotion/react": "^11.14.0",
-         "@emotion/styled": "^11.14.1",
-         "@mui/icons-material": "^7.3.6",
-         "@mui/material": "^7.3.6",
-         "@testing-library/dom": "^10.4.0",
-         "@testing-library/jest-dom": "^6.6.3",
-         "@testing-library/react": "^16.3.0",
-         "@testing-library/user-event": "^13.5.0",
-         "firebase": "^10.12.2",
-         "katex": "^0.16.28",
-         "lucide-react": "^0.561.0",
-         "react": "^19.1.0",
-         "react-dom": "^19.1.0",
-         "react-katex": "^3.1.0",
-         "react-router-dom": "^6.23.1",
-         "react-scripts": "5.0.1",
-         "react-to-print": "^3.3.0",
-         "react-youtube": "^10.1.0",
-         "tailwind-scrollbar-hide": "^4.0.0",
--        "web-vitals": "^2.1.4",
--        "@capacitor/push-notifications": "^6.0.3"
-+        "web-vitals": "^2.1.4"
-       },
-       "devDependencies": {
-         "@capacitor/cli": "^6.2.0",
-         "typescript": "^6.0.3"
-       }
-     },
-     "node_modules/@adobe/css-tools": {
-       "version": "4.4.3",
-       "resolved": "https://registry.npmjs.org/@adobe/css-tools/-/css-tools-4.4.3.tgz",
-       "integrity": "sha512-VQKMkwriZbaOgVCby1UDY/LDk5fIjhQicCvVPFqfe+69fWaPWydbWJ3wRt59/YzIwda1I81loas3oCoHxnqvdA=="
-     },
-     "node_modules/@alloc/quick-lru": {
-       "version": "5.2.0",
-       "resolved": "https://registry.npmjs.org/@alloc/quick-lru/-/quick-lru-5.2.0.tgz",
-       "integrity": "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==",
-       "engines": {
-         "node": ">=10"
-       },
-       "funding": {
-         "url": "https://github.com/sponsors/sindresorhus"
-       }
-     },
-     "node_modules/@ampproject/remapping": {
-       "version": "2.3.0",
-       "resolved": "https://registry.npmjs.org/@ampproject/remapping/-/remapping-2.3.0.tgz",
-@@ -2134,50 +2134,59 @@
-       "resolved": "https://registry.npmjs.org/@capacitor/core/-/core-6.2.1.tgz",
-       "integrity": "sha512-urZwxa7hVE/BnA18oCFAdizXPse6fCKanQyEqpmz6cBJ2vObwMpyJDG5jBeoSsgocS9+Ax+9vb4ducWJn0y2qQ==",
-       "license": "MIT",
-       "dependencies": {
-         "tslib": "^2.1.0"
-       }
-     },
-     "node_modules/@capacitor/ios": {
-       "version": "6.2.1",
-       "resolved": "https://registry.npmjs.org/@capacitor/ios/-/ios-6.2.1.tgz",
-       "integrity": "sha512-tbMlQdQjxe1wyaBvYVU1yTojKJjgluZQsJkALuJxv/6F8QTw5b6vd7X785O/O7cMpIAZfUWo/vtAHzFkRV+kXw==",
-       "license": "MIT",
-       "peerDependencies": {
-         "@capacitor/core": "^6.2.0"
-       }
-     },
-     "node_modules/@capacitor/keyboard": {
-       "version": "6.0.4",
-       "resolved": "https://registry.npmjs.org/@capacitor/keyboard/-/keyboard-6.0.4.tgz",
-       "integrity": "sha512-tNeyQGxIOTiSv3g+dTxJ/plVpGMnB4daJuCHz1E2Kelo+jOx+FKlyFY9L1Ow144SCzuXK48NXr8WoxXfXgQEKA==",
-       "license": "MIT",
-       "peerDependencies": {
-         "@capacitor/core": "^6.0.0"
-       }
-     },
-+    "node_modules/@capacitor/push-notifications": {
-+      "version": "6.0.5",
-+      "resolved": "https://registry.npmjs.org/@capacitor/push-notifications/-/push-notifications-6.0.5.tgz",
-+      "integrity": "sha512-CsRmb0cnZd9Uwx24ym4My5fNKrQvwI4D51aMEph5pUZy+LAjp6q0y4NJe8DEgwaVdAqVLbb4rqn75AZ4WSiFYg==",
-+      "license": "MIT",
-+      "peerDependencies": {
-+        "@capacitor/core": "^6.0.0"
-+      }
-+    },
-     "node_modules/@capacitor/splash-screen": {
-       "version": "6.0.4",
-       "resolved": "https://registry.npmjs.org/@capacitor/splash-screen/-/splash-screen-6.0.4.tgz",
-       "integrity": "sha512-uJXR+28cdaie7zIIUBvgkWgHim6Gr1itJym9voIMTmrjXkOaPtejwxYJsdQWPJz9zgGnSbXuC1mNNibLgv3OpQ==",
-       "license": "MIT",
-       "peerDependencies": {
-         "@capacitor/core": "^6.0.0"
-       }
-     },
-     "node_modules/@capacitor/status-bar": {
-       "version": "6.0.3",
-       "resolved": "https://registry.npmjs.org/@capacitor/status-bar/-/status-bar-6.0.3.tgz",
-       "integrity": "sha512-nFlgSmtx6Zwaw0tEvZgQsWHBeOfWWB/AvEoCApopLT4mHkBVoSrwkLvy2PjZs5wxCbsmqvQczr3XCyTwaDZVQg==",
-       "license": "MIT",
-       "peerDependencies": {
-         "@capacitor/core": "^6.0.0"
-       }
-     },
-     "node_modules/@csstools/normalize.css": {
-       "version": "12.1.1",
-       "resolved": "https://registry.npmjs.org/@csstools/normalize.css/-/normalize.css-12.1.1.tgz",
-       "integrity": "sha512-YAYeJ+Xqh7fUou1d1j9XHl44BmsuThiTr4iNrgCQ3J27IbhXsxXDGZ1cXv8Qvs99d4rBbLiSKy3+WZiet32PcQ=="
-     },
-     "node_modules/@csstools/postcss-cascade-layers": {
-       "version": "1.1.1",
-diff --git a/src/app/AppRoutes.jsx b/src/app/AppRoutes.jsx
-index 5460a352922d694abed9a9046e45aa8b2e7d5515..cc138223542f4edfde53fc21f2f69f54ca0b9778 100644
---- a/src/app/AppRoutes.jsx
-+++ b/src/app/AppRoutes.jsx
-@@ -180,51 +180,57 @@ const NativeStaffRouteGuard = ({ role, children }) => {
- };
- 
- export default function AppRoutes({ user, role, studentIds }) {
-   const navigate = useNavigate();
-   const location = useLocation();
-   const routePath = location?.pathname || '';
-   const page = useMemo(() => getPageKeyFromPath(location.pathname), [location.pathname]);
-   const [notifications, setNotifications] = useState([]);
-   const [isGlobalDirty, setIsGlobalDirty] = useState(false);
-   const [studentSearchTerm, setStudentSearchTerm] = useState('');
-   const userId = user?.uid || null;
-   const isAuthenticated = Boolean(user);
-   const { logout, profileDocId } = useAuth();
-   const {
-       activeStudentId: parentActiveStudentId,
-       studentIds: parentStudentIds,
-       loading: parentLoading,
-   } = useParentContext();
- 
-   useEffect(() => {
-       if (!userId) return undefined;
-       let active = true;
-       let registeredToken = null;
-       registerDevicePushToken(userId)
-           .then((token) => {
--              if (!active) return;
-+              if (!active) {
-+                  if (token) {
-+                      unregisterDevicePushToken(userId, token)
-+                          .catch((error) => console.warn('[push] token cleanup failed', error));
-+                  }
-+                  return;
-+              }
-               registeredToken = token;
-           })
-           .catch((error) => console.warn('[push] token registration skipped', error));
- 
-       return () => {
-           active = false;
-           if (registeredToken) {
-               unregisterDevicePushToken(userId, registeredToken)
-                   .catch((error) => console.warn('[push] token cleanup failed', error));
-           }
-       };
-   }, [userId]);
- 
- 
-   const viewerRefreshRef = useRef(null);
-   const currentViewerTabRef = useRef('home');
- 
-   useEffect(() => {
-       initializePushNotificationInteractions((payload) => {
-           const targetTab = getViewerTabFromNotification(payload || {});
-           viewerRefreshRef.current?.refresh(targetTab, { force: true });
-           navigate(`/home?tab=${targetTab}`);
-       }).catch((error) => console.warn('[push] notification interaction setup failed', error));
-   }, [navigate]);
- 
 diff --git a/src/notifications/pushNotifications.js b/src/notifications/pushNotifications.js
-index 49934541787aae147fa0e259c1ef7a21264b3f18..5f84997ee88a6702f7daf8324467a78a1c7a8853 100644
+index 5f84997ee88a6702f7daf8324467a78a1c7a8853..b6ab8f6ca15ec130d1bb401414a6dbb0effa1247 100644
 --- a/src/notifications/pushNotifications.js
 +++ b/src/notifications/pushNotifications.js
-@@ -1,104 +1,153 @@
-+import { Capacitor, registerPlugin } from '@capacitor/core';
+@@ -1,37 +1,37 @@
++import { PushNotifications } from '@capacitor/push-notifications';
+ import { Capacitor, registerPlugin } from '@capacitor/core';
  import { deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
  import { getMessaging, getToken, isSupported } from 'firebase/messaging';
  import { db, firebaseApp } from '../firebase/client';
  import { isCapacitorNativeEnvironment } from '../utils/capacitorEnvironment';
  
  const WEB_VAPID_KEY = process.env.REACT_APP_FIREBASE_VAPID_KEY || '';
-+const NATIVE_REGISTRATION_TIMEOUT_MS = 30000;
-+const NativeFcmToken = registerPlugin('NativeFcmToken');
-+const isDevelopment = process.env.NODE_ENV === 'development';
-+const debugNative = (message, details) => {
-+  if (isDevelopment) console.info(`[push][native] ${message}`, details || '');
-+};
+ const NATIVE_REGISTRATION_TIMEOUT_MS = 30000;
+ const NativeFcmToken = registerPlugin('NativeFcmToken');
+-const isDevelopment = process.env.NODE_ENV === 'development';
+ const debugNative = (message, details) => {
+-  if (isDevelopment) console.info(`[push][native] ${message}`, details || '');
++  console.info(`[push][native] ${message}`, details || '');
+ };
  
  const getBrowserPushToken = async () => {
    if (!firebaseApp || !(await isSupported())) return null;
@@ -804,124 +33,103 @@ index 49934541787aae147fa0e259c1ef7a21264b3f18..5f84997ee88a6702f7daf8324467a78a
    return getToken(getMessaging(firebaseApp), { vapidKey: WEB_VAPID_KEY });
  };
  
--const getNativePushToken = async () => {
-+const waitForNativeRegistration = async (PushNotifications, timeoutMs) => new Promise((resolve) => {
-+  let settled = false;
-+  let timeout;
-+  const handles = [];
-+  const finish = async (result) => {
-+    if (settled) return;
-+    settled = true;
-+    clearTimeout(timeout);
-+    await Promise.all(handles.map((handle) => handle?.remove?.()));
-+    resolve(result);
-+  };
-+
-+  Promise.all([
-+    PushNotifications.addListener('registration', (token) => finish({ registered: true, token: token?.value })),
-+    PushNotifications.addListener('registrationError', (error) => {
-+      console.warn('[push][native] registration error', error);
-+      finish({ registered: false });
-+    }),
-+  ]).then((listenerHandles) => {
-+    handles.push(...listenerHandles);
-+    debugNative('registering');
-+    PushNotifications.register();
-+    timeout = setTimeout(() => {
-+      debugNative('timeout', { timeoutMs });
-+      finish({ registered: false });
-+    }, timeoutMs);
-+  }).catch((error) => {
-+    console.warn('[push][native] registration error', error);
-+    finish({ registered: false });
-+  });
-+});
-+
-+export const getNativePushToken = async ({ timeoutMs = NATIVE_REGISTRATION_TIMEOUT_MS } = {}) => {
+ const waitForNativeRegistration = async (PushNotifications, timeoutMs) => new Promise((resolve) => {
+   let settled = false;
+   let timeout;
+   const handles = [];
+   const finish = async (result) => {
+     if (settled) return;
+     settled = true;
+     clearTimeout(timeout);
+     await Promise.all(handles.map((handle) => handle?.remove?.()));
+@@ -41,71 +41,68 @@ const waitForNativeRegistration = async (PushNotifications, timeoutMs) => new Pr
+   Promise.all([
+     PushNotifications.addListener('registration', (token) => finish({ registered: true, token: token?.value })),
+     PushNotifications.addListener('registrationError', (error) => {
+       console.warn('[push][native] registration error', error);
+       finish({ registered: false });
+     }),
+   ]).then((listenerHandles) => {
+     handles.push(...listenerHandles);
+     debugNative('registering');
+     PushNotifications.register();
+     timeout = setTimeout(() => {
+       debugNative('timeout', { timeoutMs });
+       finish({ registered: false });
+     }, timeoutMs);
+   }).catch((error) => {
+     console.warn('[push][native] registration error', error);
+     finish({ registered: false });
+   });
+ });
+ 
+ export const getNativePushToken = async ({ timeoutMs = NATIVE_REGISTRATION_TIMEOUT_MS } = {}) => {
    if (!isCapacitorNativeEnvironment()) return null;
-+  const platform = Capacitor.getPlatform();
-+  debugNative('environment detected', { platform });
+   const platform = Capacitor.getPlatform();
+   debugNative('environment detected', { platform });
    try {
-     const importNativePlugin = new Function('specifier', 'return import(specifier)');
-     const mod = await importNativePlugin('@capacitor/push-notifications');
-     const PushNotifications = mod.PushNotifications;
+-    const importNativePlugin = new Function('specifier', 'return import(specifier)');
+-    const mod = await importNativePlugin('@capacitor/push-notifications');
+-    const PushNotifications = mod.PushNotifications;
      const permission = await PushNotifications.requestPermissions();
-+    debugNative('permission status', { receive: permission.receive });
+     debugNative('permission status', { receive: permission.receive });
      if (permission.receive !== 'granted') return null;
  
--    return await new Promise((resolve) => {
--      let settled = false;
--      const finish = async (value) => {
--        if (settled) return;
--        settled = true;
--        resolve(value || null);
--      };
--      PushNotifications.addListener('registration', (token) => finish(token?.value));
--      PushNotifications.addListener('registrationError', (error) => {
--        console.warn('[push] native registration failed', error);
--        finish(null);
--      });
--      PushNotifications.register();
--      setTimeout(() => finish(null), 10000);
--    });
-+    const result = await waitForNativeRegistration(PushNotifications, timeoutMs);
-+    if (!result.registered) return null;
-+    debugNative('registration success');
-+
-+    // Android's Capacitor event is already an FCM token. Step 2 changes only
-+    // the iOS conversion path and leaves this existing behavior untouched.
-+    if (platform !== 'ios') return result.token || null;
-+
-+    // Capacitor's iOS registration event proves APNs registration. The native
-+    // Firebase Messaging bridge then returns the FCM token stored by this app.
-+    const response = await NativeFcmToken.getToken();
-+    const token = String(response?.token || '');
-+    if (!token) return null;
-+    debugNative('FCM token ready', { tokenPrefix: token.slice(0, 8), tokenLength: token.length });
-+    return token;
+     const result = await waitForNativeRegistration(PushNotifications, timeoutMs);
+     if (!result.registered) return null;
+     debugNative('registration success');
+ 
+     // Android's Capacitor event is already an FCM token. Step 2 changes only
+     // the iOS conversion path and leaves this existing behavior untouched.
+     if (platform !== 'ios') return result.token || null;
+ 
+     // Capacitor's iOS registration event proves APNs registration. The native
+     // Firebase Messaging bridge then returns the FCM token stored by this app.
+     const response = await NativeFcmToken.getToken();
+     const token = String(response?.token || '');
+     if (!token) return null;
+-    debugNative('FCM token ready', { tokenPrefix: token.slice(0, 8), tokenLength: token.length });
++    debugNative('FCM token ready', { tokenLength: token.length });
+     return token;
    } catch (error) {
--    console.info('[push] native push plugin not ready. Install @capacitor/push-notifications and configure APNs/FCM.', error?.message || error);
-+    console.warn('[push][native] registration error', error?.message || error);
+     console.warn('[push][native] registration error', error?.message || error);
      return null;
    }
  };
  
-+export const createPushTokenRegistry = ({
-+  isNative = isCapacitorNativeEnvironment,
-+  getNativeToken = getNativePushToken,
-+  getWebToken = getBrowserPushToken,
-+  save = (uid, token, platform) => setDoc(doc(db, 'users', uid, 'fcmTokens', token), {
-+    token, platform, updatedAt: serverTimestamp(),
-+  }, { merge: true }),
-+  remove = (uid, token) => deleteDoc(doc(db, 'users', uid, 'fcmTokens', token)),
-+} = {}) => ({
-+  async register(authUid) {
-+    const uid = String(authUid || '').trim();
-+    if (!uid) return null;
-+    const native = isNative();
-+    const token = native ? await getNativeToken() : await getWebToken();
-+    if (!token) return null;
-+    if (native) debugNative('firestore token owner', { authUid: uid });
-+    try {
-+      await save(uid, token, native ? 'ios' : 'web');
-+      if (native) debugNative('firestore token stored');
-+      return token;
-+    } catch (error) {
-+      console.warn('[push] Firestore token write failed', { authUid: uid, error });
-+      throw error;
-+    }
-+  },
-+  async unregister(authUid, token) {
-+    const uid = String(authUid || '').trim();
-+    if (!uid || !token) return;
-+    await remove(uid, token);
-+  },
-+});
-+
-+const registry = createPushTokenRegistry();
-+export const registerDevicePushToken = (authUid) => registry.register(authUid);
-+export const unregisterDevicePushToken = (authUid, token) => registry.unregister(authUid, token);
-+
+ export const createPushTokenRegistry = ({
+   isNative = isCapacitorNativeEnvironment,
+   getNativeToken = getNativePushToken,
+   getWebToken = getBrowserPushToken,
+   save = (uid, token, platform) => setDoc(doc(db, 'users', uid, 'fcmTokens', token), {
+     token, platform, updatedAt: serverTimestamp(),
+   }, { merge: true }),
+   remove = (uid, token) => deleteDoc(doc(db, 'users', uid, 'fcmTokens', token)),
+ } = {}) => ({
+   async register(authUid) {
+     const uid = String(authUid || '').trim();
+     if (!uid) return null;
+     const native = isNative();
+     const token = native ? await getNativeToken() : await getWebToken();
+     if (!token) return null;
+     if (native) debugNative('firestore token owner', { authUid: uid });
+     try {
+       await save(uid, token, native ? 'ios' : 'web');
+@@ -116,38 +113,36 @@ export const createPushTokenRegistry = ({
+       throw error;
+     }
+   },
+   async unregister(authUid, token) {
+     const uid = String(authUid || '').trim();
+     if (!uid || !token) return;
+     await remove(uid, token);
+   },
+ });
+ 
+ const registry = createPushTokenRegistry();
+ export const registerDevicePushToken = (authUid) => registry.register(authUid);
+ export const unregisterDevicePushToken = (authUid, token) => registry.unregister(authUid, token);
+ 
  export const initializePushNotificationInteractions = async (onOpenNotificationCenter) => {
    const openCenter = (payload) => {
      if (typeof onOpenNotificationCenter === 'function') {
@@ -931,13 +139,10 @@ index 49934541787aae147fa0e259c1ef7a21264b3f18..5f84997ee88a6702f7daf8324467a78a
        window.dispatchEvent(new PopStateEvent('popstate'));
      }
    };
--
    if (isCapacitorNativeEnvironment()) {
      try {
-       const importNativePlugin = new Function('specifier', 'return import(specifier)');
--      const mod = await importNativePlugin('@capacitor/push-notifications');
--      const PushNotifications = mod.PushNotifications;
-+      const { PushNotifications } = await importNativePlugin('@capacitor/push-notifications');
+-      const importNativePlugin = new Function('specifier', 'return import(specifier)');
+-      const { PushNotifications } = await importNativePlugin('@capacitor/push-notifications');
        await PushNotifications.addListener('pushNotificationReceived', (notification) => {
          console.info('[push] foreground notification received', notification);
        });
@@ -947,74 +152,5 @@ index 49934541787aae147fa0e259c1ef7a21264b3f18..5f84997ee88a6702f7daf8324467a78a
      }
      return;
    }
--
    window.addEventListener('appNotificationClick', (event) => openCenter(event?.detail));
  };
--
--export const registerDevicePushToken = async (authUid) => {
--  const uid = String(authUid || '').trim();
--  if (!uid) return null;
--  const token = isCapacitorNativeEnvironment() ? await getNativePushToken() : await getBrowserPushToken();
--  if (!token) return null;
--  await setDoc(doc(db, 'users', uid, 'fcmTokens', token), {
--    token,
--    platform: isCapacitorNativeEnvironment() ? 'capacitor' : 'web',
--    updatedAt: serverTimestamp(),
--  }, { merge: true });
--  return token;
--};
--
--export const unregisterDevicePushToken = async (authUid, token) => {
--  const uid = String(authUid || '').trim();
--  if (!uid || !token) return;
--  await deleteDoc(doc(db, 'users', uid, 'fcmTokens', token));
--};
--
--export const PUSH_SETUP_TODOS = [
--  'Firebase Console: iOS 앱에 APNs Authentication Key 등록',
--  'Xcode: Signing & Capabilities에서 Push Notifications 및 Background Modes(Remote notifications) 활성화',
--  '앱 패키지: @capacitor/push-notifications 설치 후 npx cap sync 실행',
--  '웹 푸시: REACT_APP_FIREBASE_VAPID_KEY 환경변수 설정 및 firebase-messaging-sw.js 배포 확인',
--];
-diff --git a/src/notifications/pushNotifications.test.js b/src/notifications/pushNotifications.test.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..2e5e2fadf36f41b05f67ce60791e2734b368cef6
---- /dev/null
-+++ b/src/notifications/pushNotifications.test.js
-@@ -0,0 +1,36 @@
-+import { createPushTokenRegistry } from './pushNotifications';
-+
-+const canonicalUid = 'firebase-auth-uid';
-+
-+describe('push token registry', () => {
-+  test('native success saves the FCM token under the canonical auth UID', async () => {
-+    const save = jest.fn().mockResolvedValue(undefined);
-+    const registry = createPushTokenRegistry({ isNative: () => true, getNativeToken: async () => 'fcm-token', save });
-+    await expect(registry.register(canonicalUid)).resolves.toBe('fcm-token');
-+    expect(save).toHaveBeenCalledWith(canonicalUid, 'fcm-token', 'ios');
-+  });
-+
-+  test.each(['permission denied', 'registration error', 'timeout'])(
-+    '%s does not save a native token',
-+    async () => {
-+      const save = jest.fn();
-+      const registry = createPushTokenRegistry({ isNative: () => true, getNativeToken: async () => null, save });
-+      await expect(registry.register(canonicalUid)).resolves.toBeNull();
-+      expect(save).not.toHaveBeenCalled();
-+    },
-+  );
-+
-+  test('web registration continues to save a web token', async () => {
-+    const save = jest.fn().mockResolvedValue(undefined);
-+    const registry = createPushTokenRegistry({ isNative: () => false, getWebToken: async () => 'web-token', save });
-+    await expect(registry.register(canonicalUid)).resolves.toBe('web-token');
-+    expect(save).toHaveBeenCalledWith(canonicalUid, 'web-token', 'web');
-+  });
-+
-+  test('unregister deletes the same canonical UID and token path', async () => {
-+    const remove = jest.fn().mockResolvedValue(undefined);
-+    const registry = createPushTokenRegistry({ remove });
-+    await registry.unregister(canonicalUid, 'fcm-token');
-+    expect(remove).toHaveBeenCalledWith(canonicalUid, 'fcm-token');
-+  });
-+});
