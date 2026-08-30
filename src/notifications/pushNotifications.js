@@ -112,7 +112,11 @@ export const createPushTokenRegistry = ({
       if (native) debugNative('firestore token stored');
       return token;
     } catch (error) {
-      console.warn('[push] Firestore token write failed', { authUid: uid, error });
+      console.warn('[push] Firestore token write failed', {
+        hasAuthUid: Boolean(uid),
+        authUidLength: uid.length,
+        error,
+      });
       throw error;
     }
   },
