@@ -1,60 +1,24 @@
-diff --git a/src/notifications/pushNotifications.js b/src/notifications/pushNotifications.js
-index b6ab8f6ca15ec130d1bb401414a6dbb0effa1247..0e56a0f838f38d76ac73f75ab0c61592943603cf 100644
---- a/src/notifications/pushNotifications.js
-+++ b/src/notifications/pushNotifications.js
-@@ -81,51 +81,54 @@ export const getNativePushToken = async ({ timeoutMs = NATIVE_REGISTRATION_TIMEO
-     const token = String(response?.token || '');
-     if (!token) return null;
-     debugNative('FCM token ready', { tokenLength: token.length });
-     return token;
-   } catch (error) {
-     console.warn('[push][native] registration error', error?.message || error);
-     return null;
-   }
- };
+diff --git a/ios/App/App/NativeYouTubeViewController.swift b/ios/App/App/NativeYouTubeViewController.swift
+index 1228a58e053555c4df90c624b79fab56a0fcf905..422323dee1484e9f12c695b5a95f3aabaab885c2 100644
+--- a/ios/App/App/NativeYouTubeViewController.swift
++++ b/ios/App/App/NativeYouTubeViewController.swift
+@@ -1,14 +1,19 @@
+ import Capacitor
+ import UIKit
  
- export const createPushTokenRegistry = ({
-   isNative = isCapacitorNativeEnvironment,
-   getNativeToken = getNativePushToken,
-   getWebToken = getBrowserPushToken,
-   save = (uid, token, platform) => setDoc(doc(db, 'users', uid, 'fcmTokens', token), {
-     token, platform, updatedAt: serverTimestamp(),
-   }, { merge: true }),
-   remove = (uid, token) => deleteDoc(doc(db, 'users', uid, 'fcmTokens', token)),
- } = {}) => ({
-   async register(authUid) {
-     const uid = String(authUid || '').trim();
-     if (!uid) return null;
-     const native = isNative();
-     const token = native ? await getNativeToken() : await getWebToken();
-     if (!token) return null;
--    if (native) debugNative('firestore token owner', { authUid: uid });
-+    if (native) debugNative('firestore token owner', {
-+      hasAuthUid: Boolean(uid),
-+      authUidLength: uid.length,
-+    });
-     try {
-       await save(uid, token, native ? 'ios' : 'web');
-       if (native) debugNative('firestore token stored');
-       return token;
-     } catch (error) {
-       console.warn('[push] Firestore token write failed', { authUid: uid, error });
-       throw error;
+ class NativeYouTubeViewController: CAPBridgeViewController {
+     override func capacitorDidLoad() {
+         super.capacitorDidLoad()
++#if DEBUG
++        if #available(iOS 16.4, *) {
++            webView?.isInspectable = true
++        }
++#endif
+         bridge?.registerPluginInstance(NativeYouTubePlugin())
+         bridge?.registerPluginInstance(NativeGoogleAuthPlugin())
+         bridge?.registerPluginInstance(NativeFcmTokenPlugin())
+         print("[NativeYouTubePlugin] registered")
+         print("[NativeGoogleAuthPlugin] registered")
+         print("[NativeFcmTokenPlugin] registered")
      }
-   },
-   async unregister(authUid, token) {
-     const uid = String(authUid || '').trim();
-     if (!uid || !token) return;
-     await remove(uid, token);
-   },
- });
- 
- const registry = createPushTokenRegistry();
- export const registerDevicePushToken = (authUid) => registry.register(authUid);
- export const unregisterDevicePushToken = (authUid, token) => registry.unregister(authUid, token);
- 
- export const initializePushNotificationInteractions = async (onOpenNotificationCenter) => {
-   const openCenter = (payload) => {
-     if (typeof onOpenNotificationCenter === 'function') {
-       onOpenNotificationCenter(payload);
-     } else if (window.location.pathname !== '/home' || window.location.search !== '?tab=notifications') {
+ }
