@@ -103,7 +103,10 @@ export const createPushTokenRegistry = ({
     const native = isNative();
     const token = native ? await getNativeToken() : await getWebToken();
     if (!token) return null;
-    if (native) debugNative('firestore token owner', { authUid: uid });
+    if (native) debugNative('firestore token owner', {
+      hasAuthUid: Boolean(uid),
+      authUidLength: uid.length,
+    });
     try {
       await save(uid, token, native ? 'ios' : 'web');
       if (native) debugNative('firestore token stored');
