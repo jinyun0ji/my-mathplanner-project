@@ -577,6 +577,28 @@ service cloud.firestore {
       allow write: if isStaffOrAdminOrTeacher();
       allow update: if isAccountDeletionUpdate(userId);
     }
+
+    // FCM device token registry
+    match /users/{userId}/fcmTokens/{tokenId} {
+      // Only the authenticated token owner can manage their devices.
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          'token', 'platform', 'updatedAt'
+        ])
+        && request.resource.data.keys().hasAll([
+          'token', 'platform', 'updatedAt'
+        ])
+        && request.resource.data.token == tokenId
+        && request.resource.data.platform in ['ios', 'android', 'web']
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if request.auth != null
+        && request.auth.uid == userId;
+
+      allow get, list: if request.auth != null
+        && request.auth.uid == userId;
+    }
     
     match /users/{studentId}/staffMemos/{memoId} {
       allow read, write: if request.auth != null && isStaffOrAdminOrTeacher();
