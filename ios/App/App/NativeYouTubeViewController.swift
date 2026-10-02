@@ -1,9 +1,13 @@
 import Capacitor
+import CapacitorPushNotifications
 import UIKit
 
 class NativeYouTubeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
+        if bridge?.plugin(withName: "PushNotifications") == nil {
+            bridge?.registerPluginInstance(PushNotificationsPlugin())
+        }
 #if DEBUG
         if #available(iOS 16.4, *) {
             webView?.isInspectable = true
