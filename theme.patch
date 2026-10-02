@@ -1,19 +1,23 @@
 diff --git a/ios/App/App/NativeYouTubeViewController.swift b/ios/App/App/NativeYouTubeViewController.swift
-index 1228a58e053555c4df90c624b79fab56a0fcf905..422323dee1484e9f12c695b5a95f3aabaab885c2 100644
+index 422323dee1484e9f12c695b5a95f3aabaab885c2..645e76a2c63d45657d122b90b95257a6f4d0e08f 100644
 --- a/ios/App/App/NativeYouTubeViewController.swift
 +++ b/ios/App/App/NativeYouTubeViewController.swift
-@@ -1,14 +1,19 @@
+@@ -1,19 +1,23 @@
  import Capacitor
++import CapacitorPushNotifications
  import UIKit
  
  class NativeYouTubeViewController: CAPBridgeViewController {
      override func capacitorDidLoad() {
          super.capacitorDidLoad()
-+#if DEBUG
-+        if #available(iOS 16.4, *) {
-+            webView?.isInspectable = true
++        if bridge?.plugin(withName: "PushNotifications") == nil {
++            bridge?.registerPluginInstance(PushNotificationsPlugin())
 +        }
-+#endif
+ #if DEBUG
+         if #available(iOS 16.4, *) {
+             webView?.isInspectable = true
+         }
+ #endif
          bridge?.registerPluginInstance(NativeYouTubePlugin())
          bridge?.registerPluginInstance(NativeGoogleAuthPlugin())
          bridge?.registerPluginInstance(NativeFcmTokenPlugin())
