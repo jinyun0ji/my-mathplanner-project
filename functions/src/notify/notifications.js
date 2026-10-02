@@ -1,6 +1,10 @@
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { buildNotificationDocument } = require('./builders');
-const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
+const {
+    isNotificationSendingEnabled,
+    isNotificationTestUid,
+    notificationDisabledResult,
+} = require('./settings');
 
 const db = getFirestore();
 
@@ -31,8 +35,15 @@ const createNotificationForUsers = async (userIds, payload) => {
     return { notificationIds, targetUserCount: uniqueIds.length };
 };
 
-const createNotificationLog = async ({ targetCount, payload, fcmData, logData = {} }) => {
-    if (!isNotificationSendingEnabled()) {
+const createNotificationLog = async ({
+    targetCount,
+    payload,
+    fcmData,
+    logData = {},
+    allowWhenSendingDisabled = false,
+}) => {
+    const testUidLogAllowed = allowWhenSendingDisabled && isNotificationTestUid(logData.recipientUid);
+    if (!isNotificationSendingEnabled() && !testUidLogAllowed) {
         return null;
     }
 

@@ -18,6 +18,13 @@ const isNotificationSendingEnabled = () => {
     return false;
 };
 
+const getNotificationTestUid = () => String(process.env.NOTIFICATION_TEST_UID || '').trim();
+
+const isNotificationTestUid = (uid) => {
+    const testUid = getNotificationTestUid();
+    return Boolean(testUid) && uid === testUid;
+};
+
 const notificationDisabledResult = () => ({
     success: true,
     sent: false,
@@ -27,5 +34,7 @@ const notificationDisabledResult = () => ({
 
 module.exports = {
     isNotificationSendingEnabled,
+    getNotificationTestUid,
+    isNotificationTestUid,
     notificationDisabledResult,
 };

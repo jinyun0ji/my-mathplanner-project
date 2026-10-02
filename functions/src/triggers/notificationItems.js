@@ -2,12 +2,19 @@ const functions = require('firebase-functions');
 const { sendFcmToUsers } = require('../notify/fcm');
 const { buildFcmDataPayload } = require('../notify/builders');
 const { createNotificationLog } = require('../notify/notifications');
+const { isNotificationSendingEnabled, isNotificationTestUid } = require('../notify/settings');
 
 const handleNotificationItemCreated = async (snapshot, context, dependencies = {}) => {
     const sendFcm = dependencies.sendFcmToUsers || sendFcmToUsers;
     const createLog = dependencies.createNotificationLog || createNotificationLog;
+    const sendingEnabled = (dependencies.isNotificationSendingEnabled || isNotificationSendingEnabled)();
+    const testUid = (dependencies.isNotificationTestUid || isNotificationTestUid)(context.params.uid);
     const data = snapshot.data() || {};
     const { uid, notificationId } = context.params;
+
+    if (!sendingEnabled && !testUid) {
+        return null;
+    }
 
     const fcmData = {
         type: data.type || 'NOTIFICATION',
@@ -21,6 +28,7 @@ const handleNotificationItemCreated = async (snapshot, context, dependencies = {
         payload: data,
         fcmData,
         logData: { recipientUid: uid, notificationId },
+        allowWhenSendingDisabled: testUid,
     });
 
     await sendFcm(

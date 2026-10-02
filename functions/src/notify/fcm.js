@@ -1,6 +1,10 @@
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
-const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
+const {
+    isNotificationSendingEnabled,
+    isNotificationTestUid,
+    notificationDisabledResult,
+} = require('./settings');
 
 const db = getFirestore();
 
@@ -29,7 +33,11 @@ const resolveTokenEntries = (tokenSnapshot) => tokenSnapshot.docs.map((doc) => {
 }).filter(Boolean);
 
 const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logRef } = {}) => {
-    if (!isNotificationSendingEnabled()) {
+    const sendingEnabled = isNotificationSendingEnabled();
+    const uniqueIds = [...new Set(userIds.filter(Boolean))];
+    const allowedIds = sendingEnabled ? uniqueIds : uniqueIds.filter(isNotificationTestUid);
+
+    if (allowedIds.length === 0 && !sendingEnabled) {
         console.debug('[notifications] FCM skipped: notification_disabled');
         return {
             successCount: 0,
@@ -41,15 +49,13 @@ const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logR
         };
     }
 
-    const uniqueIds = [...new Set(userIds.filter(Boolean))];
-
-    if (uniqueIds.length === 0) {
+    if (allowedIds.length === 0) {
         return { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [] };
     }
 
     const messaging = getMessaging();
 
-    const results = await Promise.all(uniqueIds.map(async (uid) => {
+    const results = await Promise.all(allowedIds.map(async (uid) => {
         const tokenSnapshot = await db.collection('users').doc(uid).collection('fcmTokens').get();
         const tokenEntries = resolveTokenEntries(tokenSnapshot);
 
