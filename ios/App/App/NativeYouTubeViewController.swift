@@ -1,5 +1,5 @@
 import Capacitor
-import CapacitorPushNotifications
+import PushNotificationsPlugin
 import UIKit
 
 class NativeYouTubeViewController: CAPBridgeViewController {
