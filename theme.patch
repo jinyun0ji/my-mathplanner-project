@@ -1,34 +1,13 @@
 diff --git a/functions/src/notify/__tests__/automaticFcmPath.test.js b/functions/src/notify/__tests__/automaticFcmPath.test.js
-index cad6a9031c978b94ca5dcf39fe10c0f6070fde81..aa9a2c403f8f9c41679e2fc242e02729f8116f16 100644
+index aa9a2c403f8f9c41679e2fc242e02729f8116f16..33d58668124bb2d6f7b623f39058e5eea1f40141 100644
 --- a/functions/src/notify/__tests__/automaticFcmPath.test.js
 +++ b/functions/src/notify/__tests__/automaticFcmPath.test.js
-@@ -51,79 +51,81 @@ test('notifyUsers creates one item per unique recipient and has exactly once aut
-             isNotificationSendingEnabled: () => true,
-             notificationDisabledResult: () => ({ skipped: true }),
-         },
-         './fcm': { sendFcmToUsers: async () => { directFcmCalls += 1; } },
-     });
- 
-     const result = await notifications.notifyUsers({
-         userIds: ['student', 'parent', 'student'],
-         payload: { type: 'GRADE_PUBLISHED', title: 'title', body: 'body' },
-         fcmData: { type: 'GRADE_PUBLISHED', refCollection: 'grades', refId: 'grade-1' },
-     });
- 
-     assert.equal(writes.length, 2);
-     assert.deepEqual(Object.keys(result.notificationIds).sort(), ['parent', 'student']);
-     assert.equal(directFcmCalls, 0, 'notifyUsers must never dispatch FCM directly');
-     assert.equal(result.sent, false);
- });
- 
- test('one item create invokes exactly once automatic FCM path and writes a delivery log', async () => {
-     const dispatches = [];
-     const logs = [];
+@@ -72,53 +72,142 @@ test('one item create invokes exactly once automatic FCM path and writes a deliv
      const { handleNotificationItemCreated, onNotificationItemCreated } = loadWithMocks('src/triggers/notificationItems.js', {
          'firebase-functions': firestoreFunctionsMock,
          '../notify/fcm': { sendFcmToUsers: async () => undefined },
          '../notify/notifications': { createNotificationLog: async () => undefined },
-+        '../notify/settings': { isNotificationSendingEnabled: () => true, isNotificationTestUid: () => false },
+         '../notify/settings': { isNotificationSendingEnabled: () => true, isNotificationTestUid: () => false },
      });
      const logRef = { id: 'delivery-log' };
  
@@ -49,16 +28,105 @@ index cad6a9031c978b94ca5dcf39fe10c0f6070fde81..aa9a2c403f8f9c41679e2fc242e02729
      assert.deepEqual(dispatches[0][2], {
          notificationIds: { parent: 'clinic-1_created' },
          logRef,
++        title: undefined,
++        body: undefined,
      });
  });
  
++test('notification item title and body are delivered as distinct FCM notification fields', async () => {
++    const multicastMessages = [];
++    const db = {
++        collection: () => ({
++            doc: () => ({
++                collection: () => ({
++                    get: async () => ({
++                        docs: [{ data: () => ({ token: 'ios-token' }), ref: {} }],
++                    }),
++                }),
++            }),
++        }),
++    };
++    const fcm = loadWithMocks('src/notify/fcm.js', {
++        'firebase-admin/firestore': { getFirestore: () => db, FieldValue: { increment: (value) => value } },
++        'firebase-admin/messaging': {
++            getMessaging: () => ({
++                sendEachForMulticast: async (message) => {
++                    multicastMessages.push(message);
++                    return { failureCount: 0, responses: [{ success: true }] };
++                },
++            }),
++        },
++        './settings': {
++            isNotificationSendingEnabled: () => true,
++            isNotificationTestUid: () => false,
++            notificationDisabledResult: () => ({ skipped: true }),
++        },
++    });
++    const { handleNotificationItemCreated } = loadWithMocks('src/triggers/notificationItems.js', {
++        'firebase-functions': firestoreFunctionsMock,
++        '../notify/fcm': fcm,
++        '../notify/notifications': { createNotificationLog: async () => null },
++        '../notify/settings': { isNotificationSendingEnabled: () => true, isNotificationTestUid: () => false },
++    });
++
++    await handleNotificationItemCreated(
++        { data: () => ({ type: 'NOTICE', title: '공지 제목', body: '공지 본문', studentId: 123 }) },
++        { params: { uid: 'ios-test-user', notificationId: 'item-1' } },
++    );
++
++    assert.equal(multicastMessages.length, 1);
++    assert.deepEqual(multicastMessages[0].notification, {
++        title: '공지 제목',
++        body: '공지 본문',
++    });
++    assert.ok(Object.values(multicastMessages[0].data).every((value) => typeof value === 'string'));
++    assert.equal(multicastMessages[0].data.studentId, '123');
++});
++
++test('FCM retains chat and lesson report defaults when notification text is blank', async () => {
++    const multicastMessages = [];
++    const db = {
++        collection: () => ({
++            doc: () => ({
++                collection: () => ({
++                    get: async () => ({ docs: [{ data: () => ({ token: 'token' }), ref: {} }] }),
++                }),
++            }),
++        }),
++    };
++    const fcm = loadWithMocks('src/notify/fcm.js', {
++        'firebase-admin/firestore': { getFirestore: () => db, FieldValue: { increment: (value) => value } },
++        'firebase-admin/messaging': {
++            getMessaging: () => ({
++                sendEachForMulticast: async (message) => {
++                    multicastMessages.push(message);
++                    return { failureCount: 0, responses: [{ success: true }] };
++                },
++            }),
++        },
++        './settings': {
++            isNotificationSendingEnabled: () => true,
++            isNotificationTestUid: () => false,
++            notificationDisabledResult: () => ({ skipped: true }),
++        },
++    });
++
++    await fcm.sendFcmToUsers(['user'], { type: 'CHAT_MESSAGE' }, { title: '', body: '   ' });
++    await fcm.sendFcmToUsers(['user'], { type: 'lesson_report' });
++
++    assert.deepEqual(multicastMessages.map((message) => message.notification), [
++        { title: '새 메시지가 있습니다.', body: '새 메시지가 있습니다.' },
++        { title: '학습리포트가 도착했습니다.', body: '학습리포트가 도착했습니다.' },
++    ]);
++});
++
  test('multiple recipient items each retain exactly once automatic FCM path', async () => {
      const calls = [];
      const { handleNotificationItemCreated } = loadWithMocks('src/triggers/notificationItems.js', {
          'firebase-functions': firestoreFunctionsMock,
          '../notify/fcm': { sendFcmToUsers: async () => undefined },
          '../notify/notifications': { createNotificationLog: async () => undefined },
-+        '../notify/settings': { isNotificationSendingEnabled: () => true, isNotificationTestUid: () => false },
+         '../notify/settings': { isNotificationSendingEnabled: () => true, isNotificationTestUid: () => false },
      });
      const dependencies = {
          createNotificationLog: async () => ({ id: 'log' }),
@@ -77,218 +145,11 @@ index cad6a9031c978b94ca5dcf39fe10c0f6070fde81..aa9a2c403f8f9c41679e2fc242e02729
  test('manual retry executes its direct FCM path without creating notification items', async () => {
      const fcmCalls = [];
      let notificationItemCollectionAccesses = 0;
-     const deliveryRef = { id: 'failed-user' };
-     const logRef = {
-         get: async () => ({
-             exists: true,
-             data: () => ({
-                 type: 'GRADE_PUBLISHED',
-                 refCollection: 'grades',
-@@ -188,45 +190,189 @@ test('manual retry executes its direct FCM path without creating notification it
-         '../notify/settings': {
-             isNotificationSendingEnabled: () => true,
-             notificationDisabledResult: () => ({ skipped: true }),
-         },
-     });
- 
-     const result = await retryNotification.run({ logId: 'delivery-log' }, {});
- 
-     assert.equal(fcmCalls.length, 1);
-     assert.deepEqual(fcmCalls[0][0], ['failed-user']);
-     assert.equal(notificationItemCollectionAccesses, 0);
-     assert.equal(result.successCount, 1);
- });
- 
- test('announcement and clinic producers retain deterministic item-only writes', () => {
-     const announcementSource = fs.readFileSync(path.resolve(functionsRoot, 'src/triggers/announcements.js'), 'utf8');
-     const clinicSource = fs.readFileSync(path.resolve(functionsRoot, 'clinicNotifications.js'), 'utf8');
-     assert.match(announcementSource, /doc\(`boardPost_\$\{refId\}`\)/);
-     assert.doesNotMatch(announcementSource, /sendFcmToUsers/);
-     assert.match(clinicSource, /notificationId = `\$\{logId\}_\$\{event\}\$\{completedSuffix\}`/);
-     assert.doesNotMatch(clinicSource, /sendFcmToUsers/);
- });
- 
- test('feature flag remains default-off and FCM helper skips delivery', async () => {
-     const previousFlag = process.env.NOTIFICATION_SENDING_ENABLED;
-+    const previousTestUid = process.env.NOTIFICATION_TEST_UID;
-     delete process.env.NOTIFICATION_SENDING_ENABLED;
-+    delete process.env.NOTIFICATION_TEST_UID;
-     try {
-         const settings = loadWithMocks('src/notify/settings.js', {
-             'firebase-functions': { config: () => ({}) },
-         });
-         assert.equal(settings.isNotificationSendingEnabled(), false);
-+        assert.equal(settings.isNotificationTestUid('student'), false);
-+
-+        process.env.NOTIFICATION_TEST_UID = '  ios-test-user  ';
-+        assert.equal(settings.isNotificationSendingEnabled(), false);
-+        assert.equal(settings.isNotificationTestUid('ios-test-user'), true);
-+        assert.equal(settings.isNotificationTestUid('student'), false);
- 
-         const fcm = loadWithMocks('src/notify/fcm.js', {
-             'firebase-admin/firestore': { getFirestore: () => ({}), FieldValue: {} },
-             'firebase-admin/messaging': { getMessaging: () => { throw new Error('messaging should not initialize'); } },
-             './settings': settings,
-         });
-         const result = await fcm.sendFcmToUsers(['student'], { type: 'TEST' });
-         assert.equal(result.skipped, true);
-         assert.equal(result.reason, 'notification_disabled');
-     } finally {
-         if (previousFlag === undefined) delete process.env.NOTIFICATION_SENDING_ENABLED;
-         else process.env.NOTIFICATION_SENDING_ENABLED = previousFlag;
-+        if (previousTestUid === undefined) delete process.env.NOTIFICATION_TEST_UID;
-+        else process.env.NOTIFICATION_TEST_UID = previousTestUid;
-     }
- });
-+
-+test('disabled global sending filters FCM recipients to the configured test UID', async () => {
-+    const requestedUids = [];
-+    const multicastMessages = [];
-+    const db = {
-+        collection: (name) => {
-+            assert.equal(name, 'users');
-+            return {
-+                doc: (uid) => {
-+                    requestedUids.push(uid);
-+                    return {
-+                        collection: (subcollection) => {
-+                            assert.equal(subcollection, 'fcmTokens');
-+                            return {
-+                                get: async () => ({
-+                                    docs: [{ data: () => ({ token: `token-${uid}` }), ref: { delete: async () => undefined } }],
-+                                }),
-+                            };
-+                        },
-+                    };
-+                },
-+            };
-+        },
-+    };
-+    const fcm = loadWithMocks('src/notify/fcm.js', {
-+        'firebase-admin/firestore': { getFirestore: () => db, FieldValue: { increment: (value) => value } },
-+        'firebase-admin/messaging': {
-+            getMessaging: () => ({
-+                sendEachForMulticast: async (message) => {
-+                    multicastMessages.push(message);
-+                    return { failureCount: 0, responses: [{ success: true }] };
-+                },
-+            }),
-+        },
-+        './settings': {
-+            isNotificationSendingEnabled: () => false,
-+            isNotificationTestUid: (uid) => uid === 'ios-test-user',
-+            notificationDisabledResult: () => ({ skipped: true, reason: 'notification_disabled' }),
-+        },
-+    });
-+
-+    const result = await fcm.sendFcmToUsers(
-+        ['other-user', 'ios-test-user', 'other-user'],
-+        { type: 'TEST' },
-+        { notificationIds: { 'other-user': 'other-item', 'ios-test-user': 'test-item' } },
-+    );
-+
-+    assert.deepEqual(requestedUids, ['ios-test-user']);
-+    assert.equal(multicastMessages.length, 1);
-+    assert.deepEqual(multicastMessages[0].tokens, ['token-ios-test-user']);
-+    assert.equal(multicastMessages[0].data.notificationId, 'test-item');
-+    assert.equal(result.successCount, 1);
-+});
-+
-+test('log bypass rejects a non-test recipient even when explicitly requested', async () => {
-+    let logWrites = 0;
-+    const notifications = loadWithMocks('src/notify/notifications.js', {
-+        'firebase-admin/firestore': {
-+            getFirestore: () => ({
-+                collection: () => {
-+                    logWrites += 1;
-+                    throw new Error('log collection must not be accessed');
-+                },
-+            }),
-+            FieldValue: { serverTimestamp: () => 'timestamp' },
-+        },
-+        './builders': { buildNotificationDocument: (payload) => payload },
-+        './settings': {
-+            isNotificationSendingEnabled: () => false,
-+            isNotificationTestUid: (uid) => uid === 'ios-test-user',
-+            notificationDisabledResult: () => ({ skipped: true }),
-+        },
-+    });
-+
-+    const result = await notifications.createNotificationLog({
-+        targetCount: 1,
-+        payload: { type: 'TEST' },
-+        fcmData: { type: 'TEST' },
-+        logData: { recipientUid: 'other-user' },
-+        allowWhenSendingDisabled: true,
-+    });
-+
-+    assert.equal(result, null);
-+    assert.equal(logWrites, 0);
-+});
-+
-+test('notification item trigger skips non-test users while global sending is disabled', async () => {
-+    const calls = [];
-+    const { handleNotificationItemCreated } = loadWithMocks('src/triggers/notificationItems.js', {
-+        'firebase-functions': firestoreFunctionsMock,
-+        '../notify/fcm': { sendFcmToUsers: async () => undefined },
-+        '../notify/notifications': { createNotificationLog: async () => undefined },
-+        '../notify/settings': { isNotificationSendingEnabled: () => false, isNotificationTestUid: () => false },
-+    });
-+
-+    await handleNotificationItemCreated(
-+        { data: () => ({ type: 'TEST' }) },
-+        { params: { uid: 'other-user', notificationId: 'item-1' } },
-+        {
-+            createNotificationLog: async () => calls.push('log'),
-+            sendFcmToUsers: async () => calls.push('send'),
-+        },
-+    );
-+
-+    assert.deepEqual(calls, []);
-+});
-+
-+test('notification item trigger logs and sends for the configured test UID', async () => {
-+    const logs = [];
-+    const sends = [];
-+    const logRef = { id: 'test-log' };
-+    const { handleNotificationItemCreated } = loadWithMocks('src/triggers/notificationItems.js', {
-+        'firebase-functions': firestoreFunctionsMock,
-+        '../notify/fcm': { sendFcmToUsers: async () => undefined },
-+        '../notify/notifications': { createNotificationLog: async () => undefined },
-+        '../notify/settings': { isNotificationSendingEnabled: () => false, isNotificationTestUid: (uid) => uid === 'ios-test-user' },
-+    });
-+
-+    await handleNotificationItemCreated(
-+        { data: () => ({ type: 'TEST' }) },
-+        { params: { uid: 'ios-test-user', notificationId: 'item-1' } },
-+        {
-+            createNotificationLog: async (input) => { logs.push(input); return logRef; },
-+            sendFcmToUsers: async (...args) => sends.push(args),
-+        },
-+    );
-+
-+    assert.equal(logs.length, 1);
-+    assert.equal(logs[0].allowWhenSendingDisabled, true);
-+    assert.equal(logs[0].logData.recipientUid, 'ios-test-user');
-+    assert.equal(sends.length, 1);
-+    assert.deepEqual(sends[0][0], ['ios-test-user']);
-+    assert.equal(sends[0][2].logRef, logRef);
-+});
 diff --git a/functions/src/notify/fcm.js b/functions/src/notify/fcm.js
-index 88a48746838a956ce287a61a185092b639a30671..1b800249b225cbad8e8819d8e1268fbd751993ee 100644
+index 1b800249b225cbad8e8819d8e1268fbd751993ee..0649a61d2045147fd27066141a82943fcd8598f3 100644
 --- a/functions/src/notify/fcm.js
 +++ b/functions/src/notify/fcm.js
-@@ -1,77 +1,83 @@
- const { getFirestore, FieldValue } = require('firebase-admin/firestore');
- const { getMessaging } = require('firebase-admin/messaging');
--const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
-+const {
-+    isNotificationSendingEnabled,
-+    isNotificationTestUid,
-+    notificationDisabledResult,
-+} = require('./settings');
- 
- const db = getFirestore();
+@@ -10,110 +10,125 @@ const db = getFirestore();
  
  const chunk = (items, size) => {
      const results = [];
@@ -314,13 +175,28 @@ index 88a48746838a956ce287a61a185092b639a30671..1b800249b225cbad8e8819d8e1268fbd
      return token ? { token, ref: doc.ref } : null;
  }).filter(Boolean);
  
- const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logRef } = {}) => {
--    if (!isNotificationSendingEnabled()) {
-+    const sendingEnabled = isNotificationSendingEnabled();
-+    const uniqueIds = [...new Set(userIds.filter(Boolean))];
-+    const allowedIds = sendingEnabled ? uniqueIds : uniqueIds.filter(isNotificationTestUid);
+-const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logRef } = {}) => {
++const buildStringDataPayload = (data) => Object.entries(data).reduce((payload, [key, value]) => {
++    if (value !== undefined && value !== null && value !== '') {
++        payload[key] = String(value);
++    }
++    return payload;
++}, {});
 +
-+    if (allowedIds.length === 0 && !sendingEnabled) {
++const resolveNotificationText = (value, fallback) => (
++    typeof value === 'string' && value.trim() !== '' ? value : fallback
++);
++
++const sendFcmToUsers = async (
++    userIds,
++    dataPayload,
++    { notificationIds = {}, logRef, title, body } = {},
++) => {
+     const sendingEnabled = isNotificationSendingEnabled();
+     const uniqueIds = [...new Set(userIds.filter(Boolean))];
+     const allowedIds = sendingEnabled ? uniqueIds : uniqueIds.filter(isNotificationTestUid);
+ 
+     if (allowedIds.length === 0 && !sendingEnabled) {
          console.debug('[notifications] FCM skipped: notification_disabled');
          return {
              successCount: 0,
@@ -332,17 +208,13 @@ index 88a48746838a956ce287a61a185092b639a30671..1b800249b225cbad8e8819d8e1268fbd
          };
      }
  
--    const uniqueIds = [...new Set(userIds.filter(Boolean))];
--
--    if (uniqueIds.length === 0) {
-+    if (allowedIds.length === 0) {
+     if (allowedIds.length === 0) {
          return { successCount: 0, failureCount: 0, failedTokenCount: 0, failedUids: [] };
      }
  
      const messaging = getMessaging();
  
--    const results = await Promise.all(uniqueIds.map(async (uid) => {
-+    const results = await Promise.all(allowedIds.map(async (uid) => {
+     const results = await Promise.all(allowedIds.map(async (uid) => {
          const tokenSnapshot = await db.collection('users').doc(uid).collection('fcmTokens').get();
          const tokenEntries = resolveTokenEntries(tokenSnapshot);
  
@@ -355,10 +227,12 @@ index 88a48746838a956ce287a61a185092b639a30671..1b800249b225cbad8e8819d8e1268fbd
              };
          }
  
-         const payload = {
+-        const payload = {
++        const payload = buildStringDataPayload({
              ...dataPayload,
              notificationId: notificationIds[uid],
-         };
+-        };
++        });
  
          const tokenChunks = chunk(tokenEntries, 500);
  
@@ -368,182 +242,56 @@ index 88a48746838a956ce287a61a185092b639a30671..1b800249b225cbad8e8819d8e1268fbd
  
          await Promise.all(tokenChunks.map(async (entryBatch) => {
              const tokens = entryBatch.map((entry) => entry.token);
-@@ -152,26 +158,26 @@ const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logR
-             const batch = db.batch();
-             failedEntries.slice(i, i + 450).forEach((entry) => {
-                 const deliveryRef = logRef.collection('deliveries').doc(entry.uid);
-                 batch.set(deliveryRef, {
-                     errorCode: entry.errorCode,
-                     status: 'failed',
-                     failedAt: FieldValue.serverTimestamp(),
-                     lastAttemptedAt: FieldValue.serverTimestamp(),
-                 });
+             const isMessage = payload.category === 'message' || payload.type === 'CHAT_MESSAGE';
+             const isLessonReport = payload.category === 'lessonReport' || payload.type === 'lesson_report';
+             const notificationBody = isMessage
+                 ? '새 메시지가 있습니다.'
+                 : (isLessonReport ? '학습리포트가 도착했습니다.' : '새 알림이 있습니다.');
+             const response = await messaging.sendEachForMulticast({
+                 tokens,
+                 data: payload,
+                 notification: {
+-                    title: notificationBody,
+-                    body: notificationBody,
++                    title: resolveNotificationText(title, notificationBody),
++                    body: resolveNotificationText(body, notificationBody),
+                 },
              });
-             await batch.commit();
-         }
-     }
  
-     return {
-         successCount: totals.successCount,
-         failureCount: totals.failureCount,
-         failedTokenCount: totals.failedTokenCount,
-         failedUids: totals.failedUids,
-         failedEntries,
-     };
- };
+             if (response.failureCount > 0) {
+                 uidFailed = true;
+             }
  
- module.exports = {
-     sendFcmToUsers,
--};
-\ No newline at end of file
-+};
-diff --git a/functions/src/notify/notifications.js b/functions/src/notify/notifications.js
-index 983bd2ead5025dd6290a1b8f7b257f8c75e88784..f47a9641f4850ffcd989e0b576c49029a3ede4cf 100644
---- a/functions/src/notify/notifications.js
-+++ b/functions/src/notify/notifications.js
-@@ -1,60 +1,71 @@
- const { getFirestore, FieldValue } = require('firebase-admin/firestore');
- const { buildNotificationDocument } = require('./builders');
--const { isNotificationSendingEnabled, notificationDisabledResult } = require('./settings');
-+const {
-+    isNotificationSendingEnabled,
-+    isNotificationTestUid,
-+    notificationDisabledResult,
-+} = require('./settings');
+             const failedResponses = response.responses
+                 .map((result, index) => (result.success ? null : { error: result.error, ref: entryBatch[index].ref }))
+                 .filter(Boolean);
  
- const db = getFirestore();
+             if (!uidErrorCode) {
+                 const firstError = failedResponses.find((entry) => entry.error);
+                 uidErrorCode = firstError?.error?.code || '';
+             }
  
- const createNotificationForUsers = async (userIds, payload) => {
-     if (!isNotificationSendingEnabled()) {
-         return { notificationIds: {}, targetUserCount: 0, ...notificationDisabledResult() };
-     }
+             const invalidRefs = failedResponses.filter((entry) => isInvalidTokenError(entry.error));
  
-     const uniqueIds = [...new Set(userIds.filter(Boolean))];
+             if (invalidRefs.length > 0) {
+                 failedTokenCount += invalidRefs.length;
+                 await Promise.all(invalidRefs.map((entry) => entry.ref.delete()));
+             }
+         }));
  
-     if (uniqueIds.length === 0) {
-         return { notificationIds: {}, targetUserCount: 0 };
-     }
- 
-     const notificationIds = {};
-     const batch = db.batch();
- 
-     uniqueIds.forEach((uid) => {
-         const docRef = db.collection('notifications').doc(uid).collection('items').doc();
-         notificationIds[uid] = docRef.id;
-         batch.set(docRef, {
-             ...buildNotificationDocument(payload),
-             createdAt: FieldValue.serverTimestamp(),
-         });
-     });
- 
-     await batch.commit();
-     return { notificationIds, targetUserCount: uniqueIds.length };
- };
- 
--const createNotificationLog = async ({ targetCount, payload, fcmData, logData = {} }) => {
--    if (!isNotificationSendingEnabled()) {
-+const createNotificationLog = async ({
-+    targetCount,
-+    payload,
-+    fcmData,
-+    logData = {},
-+    allowWhenSendingDisabled = false,
-+}) => {
-+    const testUidLogAllowed = allowWhenSendingDisabled && isNotificationTestUid(logData.recipientUid);
-+    if (!isNotificationSendingEnabled() && !testUidLogAllowed) {
-         return null;
-     }
- 
-     const logRef = db.collection('notifications').doc();
-     await logRef.set({
-         targetCount,
-         successCount: 0,
-         failureCount: 0,
-         failedTokenCount: 0,
-         sentAt: FieldValue.serverTimestamp(),
-         eventType: fcmData?.type || payload?.type || null,
-         type: fcmData?.type || payload?.type || null,
-         title: payload?.title || null,
-         body: payload?.body || null,
-         ref: payload?.ref || null,
-         refCollection: fcmData?.refCollection || null,
-         refId: fcmData?.refId || null,
-         studentId: fcmData?.studentId || payload?.studentId || null,
-         ...logData,
-     });
-     return logRef;
- };
- 
- const notifyUsers = async ({ userIds, payload, fcmData }) => {
-     if (!isNotificationSendingEnabled()) {
-diff --git a/functions/src/notify/settings.js b/functions/src/notify/settings.js
-index 221022b1142da2ecba531afb16bd07924b993f49..403b1bf2c5cd8652c38dd9ae3cf10288c39cfc86 100644
---- a/functions/src/notify/settings.js
-+++ b/functions/src/notify/settings.js
-@@ -1,31 +1,40 @@
- const functions = require('firebase-functions');
- 
- const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on', 'enabled']);
- 
- const normalizeFlag = (value) => String(value || '').trim().toLowerCase();
- 
- const isNotificationSendingEnabled = () => {
-     const envValue = normalizeFlag(process.env.NOTIFICATION_SENDING_ENABLED);
-     if (envValue) {
-         return TRUE_VALUES.has(envValue);
-     }
- 
-     const configValue = normalizeFlag(functions.config()?.notifications?.sending_enabled);
-     if (configValue) {
-         return TRUE_VALUES.has(configValue);
-     }
- 
-     return false;
- };
- 
-+const getNotificationTestUid = () => String(process.env.NOTIFICATION_TEST_UID || '').trim();
-+
-+const isNotificationTestUid = (uid) => {
-+    const testUid = getNotificationTestUid();
-+    return Boolean(testUid) && uid === testUid;
-+};
-+
- const notificationDisabledResult = () => ({
-     success: true,
-     sent: false,
-     skipped: true,
-     reason: 'notification_disabled',
- });
- 
- module.exports = {
-     isNotificationSendingEnabled,
-+    getNotificationTestUid,
-+    isNotificationTestUid,
-     notificationDisabledResult,
- };
+         return {
 diff --git a/functions/src/triggers/notificationItems.js b/functions/src/triggers/notificationItems.js
-index 8141d7ce67a7e6b575f0229fa5dc15037604c4ea..c65668dcf1c3e36b8fbcbc541e4ef41fca993bd3 100644
+index c65668dcf1c3e36b8fbcbc541e4ef41fca993bd3..1650c97f54bc472b9d69ac2ec44deb5175deab73 100644
 --- a/functions/src/triggers/notificationItems.js
 +++ b/functions/src/triggers/notificationItems.js
-@@ -1,38 +1,46 @@
- const functions = require('firebase-functions');
- const { sendFcmToUsers } = require('../notify/fcm');
- const { buildFcmDataPayload } = require('../notify/builders');
- const { createNotificationLog } = require('../notify/notifications');
-+const { isNotificationSendingEnabled, isNotificationTestUid } = require('../notify/settings');
- 
- const handleNotificationItemCreated = async (snapshot, context, dependencies = {}) => {
-     const sendFcm = dependencies.sendFcmToUsers || sendFcmToUsers;
-     const createLog = dependencies.createNotificationLog || createNotificationLog;
-+    const sendingEnabled = (dependencies.isNotificationSendingEnabled || isNotificationSendingEnabled)();
-+    const testUid = (dependencies.isNotificationTestUid || isNotificationTestUid)(context.params.uid);
+@@ -12,35 +12,40 @@ const handleNotificationItemCreated = async (snapshot, context, dependencies = {
      const data = snapshot.data() || {};
      const { uid, notificationId } = context.params;
  
-+    if (!sendingEnabled && !testUid) {
-+        return null;
-+    }
-+
+     if (!sendingEnabled && !testUid) {
+         return null;
+     }
+ 
      const fcmData = {
          type: data.type || 'NOTIFICATION',
          category: data.category || data.payload?.category || data.type || '',
@@ -556,13 +304,19 @@ index 8141d7ce67a7e6b575f0229fa5dc15037604c4ea..c65668dcf1c3e36b8fbcbc541e4ef41f
          payload: data,
          fcmData,
          logData: { recipientUid: uid, notificationId },
-+        allowWhenSendingDisabled: testUid,
+         allowWhenSendingDisabled: testUid,
      });
  
      await sendFcm(
          [uid],
          buildFcmDataPayload(fcmData),
-         { notificationIds: { [uid]: notificationId }, logRef },
+-        { notificationIds: { [uid]: notificationId }, logRef },
++        {
++            notificationIds: { [uid]: notificationId },
++            logRef,
++            title: data.title,
++            body: data.body,
++        },
      );
      return null;
  };

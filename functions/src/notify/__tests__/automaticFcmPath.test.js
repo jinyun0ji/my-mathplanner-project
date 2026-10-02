@@ -94,7 +94,96 @@ test('one item create invokes exactly once automatic FCM path and writes a deliv
     assert.deepEqual(dispatches[0][2], {
         notificationIds: { parent: 'clinic-1_created' },
         logRef,
+        title: undefined,
+        body: undefined,
     });
+});
+
+test('notification item title and body are delivered as distinct FCM notification fields', async () => {
+    const multicastMessages = [];
+    const db = {
+        collection: () => ({
+            doc: () => ({
+                collection: () => ({
+                    get: async () => ({
+                        docs: [{ data: () => ({ token: 'ios-token' }), ref: {} }],
+                    }),
+                }),
+            }),
+        }),
+    };
+    const fcm = loadWithMocks('src/notify/fcm.js', {
+        'firebase-admin/firestore': { getFirestore: () => db, FieldValue: { increment: (value) => value } },
+        'firebase-admin/messaging': {
+            getMessaging: () => ({
+                sendEachForMulticast: async (message) => {
+                    multicastMessages.push(message);
+                    return { failureCount: 0, responses: [{ success: true }] };
+                },
+            }),
+        },
+        './settings': {
+            isNotificationSendingEnabled: () => true,
+            isNotificationTestUid: () => false,
+            notificationDisabledResult: () => ({ skipped: true }),
+        },
+    });
+    const { handleNotificationItemCreated } = loadWithMocks('src/triggers/notificationItems.js', {
+        'firebase-functions': firestoreFunctionsMock,
+        '../notify/fcm': fcm,
+        '../notify/notifications': { createNotificationLog: async () => null },
+        '../notify/settings': { isNotificationSendingEnabled: () => true, isNotificationTestUid: () => false },
+    });
+
+    await handleNotificationItemCreated(
+        { data: () => ({ type: 'NOTICE', title: '공지 제목', body: '공지 본문', studentId: 123 }) },
+        { params: { uid: 'ios-test-user', notificationId: 'item-1' } },
+    );
+
+    assert.equal(multicastMessages.length, 1);
+    assert.deepEqual(multicastMessages[0].notification, {
+        title: '공지 제목',
+        body: '공지 본문',
+    });
+    assert.ok(Object.values(multicastMessages[0].data).every((value) => typeof value === 'string'));
+    assert.equal(multicastMessages[0].data.studentId, '123');
+});
+
+test('FCM retains chat and lesson report defaults when notification text is blank', async () => {
+    const multicastMessages = [];
+    const db = {
+        collection: () => ({
+            doc: () => ({
+                collection: () => ({
+                    get: async () => ({ docs: [{ data: () => ({ token: 'token' }), ref: {} }] }),
+                }),
+            }),
+        }),
+    };
+    const fcm = loadWithMocks('src/notify/fcm.js', {
+        'firebase-admin/firestore': { getFirestore: () => db, FieldValue: { increment: (value) => value } },
+        'firebase-admin/messaging': {
+            getMessaging: () => ({
+                sendEachForMulticast: async (message) => {
+                    multicastMessages.push(message);
+                    return { failureCount: 0, responses: [{ success: true }] };
+                },
+            }),
+        },
+        './settings': {
+            isNotificationSendingEnabled: () => true,
+            isNotificationTestUid: () => false,
+            notificationDisabledResult: () => ({ skipped: true }),
+        },
+    });
+
+    await fcm.sendFcmToUsers(['user'], { type: 'CHAT_MESSAGE' }, { title: '', body: '   ' });
+    await fcm.sendFcmToUsers(['user'], { type: 'lesson_report' });
+
+    assert.deepEqual(multicastMessages.map((message) => message.notification), [
+        { title: '새 메시지가 있습니다.', body: '새 메시지가 있습니다.' },
+        { title: '학습리포트가 도착했습니다.', body: '학습리포트가 도착했습니다.' },
+    ]);
 });
 
 test('multiple recipient items each retain exactly once automatic FCM path', async () => {

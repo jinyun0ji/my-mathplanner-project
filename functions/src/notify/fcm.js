@@ -32,7 +32,22 @@ const resolveTokenEntries = (tokenSnapshot) => tokenSnapshot.docs.map((doc) => {
     return token ? { token, ref: doc.ref } : null;
 }).filter(Boolean);
 
-const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logRef } = {}) => {
+const buildStringDataPayload = (data) => Object.entries(data).reduce((payload, [key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+        payload[key] = String(value);
+    }
+    return payload;
+}, {});
+
+const resolveNotificationText = (value, fallback) => (
+    typeof value === 'string' && value.trim() !== '' ? value : fallback
+);
+
+const sendFcmToUsers = async (
+    userIds,
+    dataPayload,
+    { notificationIds = {}, logRef, title, body } = {},
+) => {
     const sendingEnabled = isNotificationSendingEnabled();
     const uniqueIds = [...new Set(userIds.filter(Boolean))];
     const allowedIds = sendingEnabled ? uniqueIds : uniqueIds.filter(isNotificationTestUid);
@@ -68,10 +83,10 @@ const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logR
             };
         }
 
-        const payload = {
+        const payload = buildStringDataPayload({
             ...dataPayload,
             notificationId: notificationIds[uid],
-        };
+        });
 
         const tokenChunks = chunk(tokenEntries, 500);
 
@@ -90,8 +105,8 @@ const sendFcmToUsers = async (userIds, dataPayload, { notificationIds = {}, logR
                 tokens,
                 data: payload,
                 notification: {
-                    title: notificationBody,
-                    body: notificationBody,
+                    title: resolveNotificationText(title, notificationBody),
+                    body: resolveNotificationText(body, notificationBody),
                 },
             });
 

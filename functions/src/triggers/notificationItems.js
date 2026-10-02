@@ -34,7 +34,12 @@ const handleNotificationItemCreated = async (snapshot, context, dependencies = {
     await sendFcm(
         [uid],
         buildFcmDataPayload(fcmData),
-        { notificationIds: { [uid]: notificationId }, logRef },
+        {
+            notificationIds: { [uid]: notificationId },
+            logRef,
+            title: data.title,
+            body: data.body,
+        },
     );
     return null;
 };
