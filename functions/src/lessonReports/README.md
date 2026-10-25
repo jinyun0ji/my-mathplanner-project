@@ -14,9 +14,10 @@ dependencies; they never initialize an Admin app or contact Firebase.
 - `schedule({ reportId, scheduledSendAt, expectedRevision })` explicitly enrolls
   one draft report, increments its revision and sets the service version marker.
 - `cancelSchedule({ reportId, expectedRevision })` cancels a pending schedule and
-  invalidates stale workers. A live processing lease returns `busy`; a partial
-  materialization returns `dispatch_already_started`. Already emitted pushes
-  cannot be recalled. A caller must display this result instead of claiming success.
+  invalidates stale workers. A live processing lease returns `busy`. Only a legacy
+  partial receipt returns `dispatch_already_started`; new failed attempts leave no
+  partial items and may be edited/cancelled. Already emitted pushes cannot be
+  recalled. A caller must display these results instead of claiming success.
 - `saveContent({ reportId, content, expectedRevision })` accepts a strict whitelist
   of report content fields. It preserves schedules, increments the revision, and
   preserves published status/sentAt while repairing a legacy sent/draft mismatch.
@@ -61,20 +62,57 @@ are SHA-256 of `[reportId, event, authUid]`; no separate retry event is generate
 This module does not offer an intentional resend feature.
 
 A transaction claims a 60-second lease with a random owner and expected revision.
-Each recipient transaction rechecks the report, owner, revision, lease, due state
-and server flag, then atomically **creates** the item and records that UID in the
-receipt. Existing items are checked for event ownership and never updated, so
-`isRead`, `readAt` and `createdAt` survive retries. The resolved recipient set is
-frozen for retries of that event/revision; normal linkage changes apply to future
-events, not an already started fan-out. A final transaction marks complete only
-after all recorded targets succeeded. Failed UIDs/error codes are recorded.
+Recipient resolution and the frozen recipient plan are stored in the private
+dispatch receipt, outside the notifications path. They cannot trigger FCM.
 
-If a worker crashes or the final commit fails, wait for the lease to expire and
-retry the same version. A new owner resumes recorded recipients; stale owners
-cannot create further items or finalize. Resolution failures retry resolution;
-an incomplete fan-out retries its frozen plan. Leases are intentionally bounded,
-not renewed indefinitely; a large/slow resolution can require a later retry.
-The service caps recipient sets at 200 to bound receipt size and work per report.
+ONE publication transaction then reads the report, receipt and every target's
+notification before writing anything. It rechecks owner, revision, lease, due
+state, flag, existing event identities and payload budgets. It **creates all
+missing items, publishes the report and completes the receipt in the same commit**.
+No recipient write is committed separately. If even the last parent's write or
+the report update fails, none of those new items exists and no onCreate event is
+emitted. Once any new item can trigger FCM, `status=sent` is already committed.
+No FCM-trigger change or staged outbox is needed for this bounded workflow.
+
+Existing matching items are never updated: `isRead`, `readAt` and `createdAt`
+survive retries. They are not re-created or re-triggered. Immediate and scheduled
+calls share the same event, lease and deterministic IDs, so only one publication
+can commit. Firestore retries callbacks on contention; callbacks perform only
+transaction reads and buffered writes, with no Auth or FCM calls. Report/receipt
+changes invalidate an in-flight transaction and force revalidation.
+
+On a caught commit rejection, the service records `failed` separately and can
+retry the same frozen target plan immediately. `failedUids` means the affected
+atomic target set, not proof that each UID individually caused the failure. A lost
+commit acknowledgement is reconciled by reading the report/receipt: an actual
+success must never be overwritten as failed. If a process dies before cleanup,
+the lease must expire before takeover; the new owner resumes the plan. Stale
+owners cannot publish. Linkage changes apply to future events rather than changing
+an already planned retry. Leases are bounded, not renewed indefinitely.
+
+### Transaction bounds and size
+
+- At most 200 recipients, including frozen legacy plans: at most 202 document
+  reads and 202 writes (200 creates + report update + receipt update) in the
+  publication transaction. Existing items reduce its write count. Every read
+  precedes every write. No field-transform sentinels are used in this transaction.
+- Per-item application budget: 8 KiB of JSON-encoded payload; whole-publication
+  budget: 2 MiB estimated new payloads, paths, receipt and overhead. Oversized
+  data returns `atomic_payload_too_large` without creating items or publishing.
+  This conservative guard is **not** an exact protobuf/index-size calculation.
+- Firestore still enforces its 1 MiB document limit, 10 MiB request limit, index
+  constraints, transaction lock deadline (20 seconds), total transaction time
+  (270 seconds) and idle expiry (60 seconds). API errors or exhausted automatic
+  retries abort the entire publication. The application lease is separate from
+  those SDK/server deadlines. Reads of legacy items may also cause server limits
+  to be exceeded; no partial commit is possible in that case.
+- Never split an oversized publication into recipient batches: that restores the
+  unsafe intermediate state. A future requirement above these bounds needs a
+  separately reviewed staged outbox that emits visible items only after public
+  availability, with its own activation/idempotency design.
+
+Reference contracts: [Firestore transactions](https://firebase.google.com/docs/firestore/manage-data/transactions)
+and [Firestore quotas](https://firebase.google.com/docs/firestore/quotas).
 
 State is recorded in `dispatchLastResult` and the receipt:
 
@@ -83,16 +121,25 @@ State is recorded in `dispatchLastResult` and the receipt:
 | `deferred_disabled` | No new items/completion; reservation stays pending |
 | `no_recipients` | No publication; explicit empty-target result |
 | `recipient_resolution_failed` | No publication; linkage/Auth lookup diagnosis |
-| `partial_failure` / `failed` | No completion; failed UIDs recorded; same event can retry |
+| `failed` | All new notification writes rolled back; no publication; atomic target set/error code recorded |
+| `atomic_payload_too_large` / `recipient_limit_exceeded` | Fail closed; never fall back to partial fan-out |
+| `notification_identity_conflict` | An existing deterministic ID belongs to another event/report; no new items |
 | `completed` | `status=sent`, `sendStatus=sent`, `sentAt` server Timestamp; schedule cleared |
 | `already_sent` | No writes or delivery inference for a previously published report |
 
 `studentNotificationSent` / `parentNotificationSent` mean all resolved recipients
 in that role have inbox items, not FCM delivery. No parent targets means false,
-not a fabricated success. A partial result can have one role complete, while
-the report remains draft and `sentAt` remains null. Only successful completion
-publishes it under the existing status-based query/rules. A job becoming disabled
-mid-fan-out may already have some items; it does not publish or consume the job.
+not a fabricated success. With the atomic implementation, no new partially
+successful delivery state is produced: role flags, publication and `sentAt` update
+together. A blocked/failed new event leaves them unchanged. `createdCount` on
+completion counts all materialized targets (including matching existing items);
+`newItemCount` counts only items newly created by this commit.
+
+A legacy `partial_failure` receipt can be resumed using this atomic implementation;
+already read items remain untouched. However, pushes emitted by the old unsafe
+implementation or the old frontend cannot be recalled or made retroactively safe.
+This guarantee applies to newly created items from this service, not other
+producers or later external code that might revert the report to draft.
 
 ## Scheduling and rollout safeguards
 
@@ -111,7 +158,7 @@ be bulk-sent. Content edits, rescheduling and cancellation invalidate old versio
 Plan required indexes separately; this change creates none.
 
 The production gate is the existing `isNotificationSendingEnabled()`, checked
-before claiming, inside each recipient transaction and at completion.
+before claiming, at publication transaction entry and again after all item reads.
 `NOTIFICATION_TEST_UID` grants **no bypass** here. `sendingEnabled` is a dependency
 injection seam for isolated unit tests, not an endpoint option. Future UID-scoped
 verification should first provide a read-only recipient preview/dry run, then use
@@ -127,14 +174,12 @@ instances; operational emergency shutdown also needs the downstream FCM gate.
    do not run both producers. Old random-ID notifications cannot be safely
    deduplicated from ID alone; legacy `status=sent` reports are never resent here.
 2. Route content save/schedule/cancel through these APIs, handle revisions/busy/
-   partial errors, and derive `scheduledBy`/`sentBy` from authenticated context.
+   failure errors, and derive `scheduledBy`/`sentBy` from authenticated context.
    Existing frontend code can still bypass these invariants until it is replaced;
    no claim is made that today's UI behavior has been repaired.
-3. Review partial fan-out UX: existing onCreate FCM may fire for an item before
-   the final report-publication transaction completes. A partial failure can
-   leave a notification pointing to a report still hidden by current rules.
-   Before live integration, choose atomic bounded fan-out/publication or a staged
-   outbox/activation design. This module does not alter the shared FCM trigger.
+3. Keep notification creation and report-publication in the single bounded
+   transaction. Both precede the existing onCreate event; the shared FCM trigger,
+   notification-center schema and account/parent-link resolver remain unchanged.
 4. Test with Firestore Emulator before deployment (optimistic retries here are
    simulated). Add composite indexes and a bounded Scheduler only in a later task.
    No Scheduler/endpoint is exported by this change.
@@ -152,7 +197,11 @@ env -u GOOGLE_APPLICATION_CREDENTIALS node --test functions/src/identity/__tests
 ```
 
 All IDs and Auth records in these tests are fictional. The fake database enforces
-read-before-write, atomic commit failure and optimistic conflict retries. It has
+read-before-write, atomic commit failure and optimistic conflict retries. Its
+onCreate observer runs after the entire commit and checks that the report and
+receipt are already completed. Tests cover last-recipient rollback, concurrent
+immediate/scheduled requests, callback retries, stopped workers/lease takeover,
+lost acknowledgements, existing read items, limits and the global flag. It has
 no network APIs, ADC or FCM implementation. This is local validation, not emulator
 or operating-project verification.
 

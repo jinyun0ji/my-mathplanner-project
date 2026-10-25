@@ -10,6 +10,11 @@ const createFakeFirestore = (initial = {}) => {
     const versions = new Map();
     const failures = new Map();
     const writes = [];
+    const commits = [];
+    const createEvents = [];
+    const createObservers = [];
+    let beforeCommit = () => {};
+    let afterCommit = () => {};
     const snapshot = (path) => ({ id: path.split('/').pop(), exists: data.has(path), ref: doc(path), data: () => clone(data.get(path)) });
     const doc = (path) => ({ path, id: path.split('/').pop(), get: async () => snapshot(path), collection: (name) => collection(`${path}/${name}`) });
     const collection = (path, filters = [], count = Infinity) => ({
@@ -31,6 +36,11 @@ const createFakeFirestore = (initial = {}) => {
         read: (path) => clone(data.get(path)),
         paths: () => [...data.keys()],
         writes,
+        commits,
+        createEvents,
+        onCreate: (observer) => createObservers.push(observer),
+        beforeCommit: (hook) => { beforeCommit = hook; },
+        afterCommit: (hook) => { afterCommit = hook; },
         failNext: (path, count = 1) => failures.set(path, count),
         // Simulate another client without running application/production code.
         seed: (path, value) => { data.set(path, clone(value)); versions.set(path, (versions.get(path) || 0) + 1); },
@@ -49,6 +59,7 @@ const createFakeFirestore = (initial = {}) => {
                     create: (ref, value) => pending.push({ path: ref.path, value, op: 'create' }),
                 };
                 const result = await fn(tx);
+                await beforeCommit(pending);
                 if ([...reads].some(([path, version]) => (versions.get(path) || 0) !== version)) continue;
                 for (const write of pending) {
                     if (failures.get(write.path) > 0) {
@@ -63,6 +74,15 @@ const createFakeFirestore = (initial = {}) => {
                     versions.set(write.path, (versions.get(write.path) || 0) + 1);
                     writes.push(write);
                 }
+                const commit = { writes: pending, readCount: reads.size };
+                commits.push(commit);
+                // Firestore events observe committed state, never staged writes.
+                for (const write of pending.filter(({ op }) => op === 'create')) {
+                    const event = { path: write.path, data: clone(write.value), commit };
+                    createEvents.push(event);
+                    createObservers.forEach((observe) => observe(event));
+                }
+                await afterCommit(pending);
                 return result;
             }
             throw new Error('Mock transaction contention limit exceeded');

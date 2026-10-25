@@ -7,6 +7,10 @@ const { createLessonReportRecipientResolver } = require('./recipients');
 const EVENT = 'first-publication';
 const SERVICE_VERSION = 1;
 const TIME_ZONE = 'Asia/Seoul';
+// Application budgets, deliberately below Firestore's 10 MiB request limit.
+// The SDK/server still enforce wire size, document/index and transaction limits.
+const MAX_ITEM_BYTES = 8 * 1024;
+const MAX_ATOMIC_BYTES = 2 * 1024 * 1024;
 const CONTENT_FIELDS = new Set(['comment', 'learnedTopics', 'attendanceStatus', 'selectedHomeworkProgressIds',
     'selectedAssignedHomeworkIds', 'selectedHomeworkIds', 'selectedTestIds', 'homeworkSummary',
     'assignedHomeworkSummary', 'testSummary', 'autoInputStatus', 'isModified']);
@@ -112,6 +116,7 @@ const createLessonReportService = ({ db, auth, sendingEnabled = isNotificationSe
 
         const finishWithoutDelivery = async (state, details = {}) => db.runTransaction(async (tx) => {
             const [snap, job] = await Promise.all([tx.get(reportRef), tx.get(jobRef)]);
+            if (snap.exists && (snap.data().status === 'sent' || job.data()?.state === 'completed')) return outcome('already_sent');
             if (!snap.exists || !locked(snap.data(), job.data(), owner, expectedRevision, now(), mode)) return outcome('superseded');
             const result = { state, ...details, at: now() };
             tx.update(jobRef, { ...result, leaseUntil: now() });
@@ -137,54 +142,87 @@ const createLessonReportService = ({ db, auth, sendingEnabled = isNotificationSe
             if (!planned) return outcome('superseded');
         }
 
-        const failures = [];
-        for (const recipient of recipients) {
-            try {
-                const result = await db.runTransaction(async (tx) => {
-                    const ref = itemRef(reportId, recipient.uid);
-                    const [snap, jobSnap, existing] = await Promise.all([tx.get(reportRef), tx.get(jobRef), tx.get(ref)]);
-                    if (!snap.exists || !locked(snap.data(), jobSnap.data(), owner, expectedRevision, now(), mode)) return 'superseded';
-                    if (!sendingEnabled()) return 'deferred_disabled';
-                    const job = jobSnap.data();
-                    if (existing.exists) {
-                        if (existing.data().dispatchEvent !== EVENT || existing.data().refId !== reportId) throw new Error('Notification identity conflict');
-                    } else {
-                        tx.create(ref, { ...buildNotificationDocument({ type: 'lesson_report', category: 'lessonReport',
-                            title: '학습리포트가 도착했습니다.', body: '학습리포트가 도착했습니다.',
-                            ref: `lessonReports/${reportId}`, refCollection: 'lessonReports', refId: reportId,
-                            studentId: snap.data().studentId }),
-                        dispatchEvent: EVENT, createdAt: now(), payload: { reportId, studentId: snap.data().studentId,
-                            classId: snap.data().classId || null, lessonDate: snap.data().lessonDate || null,
-                            type: 'lesson_report', refCollection: 'lessonReports' } });
-                    }
-                    tx.update(jobRef, { completedUids: [...new Set([...(job.completedUids || []), recipient.uid])] });
-                    return 'created_or_existing';
-                });
-                if (result === 'superseded') return outcome('superseded');
-                if (result === 'deferred_disabled') break;
-            } catch (error) { failures.push({ uid: recipient.uid, errorCode: error.code || 'item-write-failed' }); }
+        // Validate frozen plans too: an old receipt must not bypass today's cap.
+        if (!Array.isArray(recipients) || !recipients.length || recipients.length > maxRecipients) {
+            return finishWithoutDelivery('recipient_limit_exceeded');
+        }
+        if (new Set(recipients.map(({ uid }) => uid)).size !== recipients.length
+            || recipients.some(({ uid, roles }) => typeof uid !== 'string' || !uid || uid.includes('/') || uid.length > 128
+                || !Array.isArray(roles) || !roles.length || roles.some((role) => !['student', 'parent'].includes(role)))) {
+            return finishWithoutDelivery('invalid_recipient_plan');
         }
 
-        return db.runTransaction(async (tx) => {
-            const [snap, jobSnap] = await Promise.all([tx.get(reportRef), tx.get(jobRef)]);
-            if (!snap.exists || !locked(snap.data(), jobSnap.data(), owner, expectedRevision, now(), mode)) return outcome('superseded');
-            const completed = new Set(jobSnap.data().completedUids || []);
-            const disabled = !sendingEnabled();
-            const complete = !disabled && recipients.every(({ uid }) => completed.has(uid));
-            const state = disabled ? 'deferred_disabled' : complete ? 'completed' : completed.size ? 'partial_failure' : 'failed';
-            const result = { state, targetCount: recipients.length, createdCount: completed.size,
-                failedUids: recipients.filter(({ uid }) => !completed.has(uid)).map(({ uid }) => uid), failures, at: now() };
-            const roleComplete = (role) => {
-                const targets = recipients.filter(({ roles }) => roles.includes(role));
-                return targets.length > 0 && targets.every(({ uid }) => completed.has(uid));
-            };
-            const patch = { dispatchLastResult: result, studentNotificationSent: roleComplete('student'), parentNotificationSent: roleComplete('parent') };
-            if (complete) Object.assign(patch, { status: 'sent', sendStatus: 'sent', sendMode: mode,
-                scheduledSendAt: null, scheduledBy: null, sentAt: now() });
-            tx.update(reportRef, patch);
-            tx.update(jobRef, { ...result, leaseUntil: now() });
-            return result;
-        });
+        try {
+            const result = await db.runTransaction(async (tx) => {
+                const [snap, jobSnap] = await Promise.all([tx.get(reportRef), tx.get(jobRef)]);
+                if (!snap.exists) return outcome('superseded');
+                if (snap.data().status === 'sent' || jobSnap.data()?.state === 'completed') return outcome('already_sent');
+                if (!locked(snap.data(), jobSnap.data(), owner, expectedRevision, now(), mode)) return outcome('superseded');
+                if (!sendingEnabled()) return outcome('deferred_disabled');
+
+                const notificationRefs = recipients.map(({ uid }) => itemRef(reportId, uid));
+                // All N+2 reads precede any write. No FCM/Auth/network side effects
+                // inside the callback: Firestore may execute it more than once.
+                const existing = await Promise.all(notificationRefs.map((ref) => tx.get(ref)));
+                const report = snap.data();
+                const at = now();
+                for (const field of ['studentId', 'classId', 'lessonDate']) {
+                    if (report[field] != null && typeof report[field] !== 'string') return outcome('invalid_report_metadata');
+                }
+                const documents = recipients.map(() => ({
+                    ...buildNotificationDocument({ type: 'lesson_report', category: 'lessonReport',
+                        title: '학습리포트가 도착했습니다.', body: '학습리포트가 도착했습니다.',
+                        ref: `lessonReports/${reportId}`, refCollection: 'lessonReports', refId: reportId,
+                        studentId: report.studentId }),
+                    dispatchEvent: EVENT, createdAt: at, payload: { reportId, studentId: report.studentId,
+                        classId: report.classId || null, lessonDate: report.lessonDate || null,
+                        type: 'lesson_report', refCollection: 'lessonReports' },
+                }));
+                const itemBytes = documents.map((document) => Buffer.byteLength(JSON.stringify(document), 'utf8'));
+                // Estimate bounded new writes plus paths/receipt and metadata margin.
+                // This is not a replacement for Firestore's protobuf/index limits.
+                const estimatedBytes = itemBytes.reduce((sum, bytes, i) => sum + bytes
+                    + Buffer.byteLength(notificationRefs[i].path, 'utf8') + 1024, 0)
+                    + Buffer.byteLength(JSON.stringify(recipients), 'utf8') + 8192;
+                if (itemBytes.some((bytes) => bytes > MAX_ITEM_BYTES) || estimatedBytes > MAX_ATOMIC_BYTES) {
+                    return outcome('atomic_payload_too_large');
+                }
+                for (const item of existing) {
+                    if (item.exists && (item.data().dispatchEvent !== EVENT || item.data().refId !== reportId)) {
+                        return outcome('notification_identity_conflict');
+                    }
+                }
+                // Recheck after reads; cancellation/rescheduling conflicts with
+                // this transaction's report read and forces an SDK retry.
+                if (!locked(report, jobSnap.data(), owner, expectedRevision, at, mode)) return outcome('superseded');
+                if (!sendingEnabled()) return outcome('deferred_disabled');
+
+                const completed = recipients.map(({ uid }) => uid);
+                const completedResult = { state: 'completed', targetCount: recipients.length,
+                    createdCount: recipients.length, newItemCount: existing.filter((item) => !item.exists).length,
+                    failedUids: [], failures: [], at };
+                existing.forEach((item, i) => {
+                    if (!item.exists) tx.create(notificationRefs[i], documents[i]);
+                });
+                // These writes and ALL creates commit together or none commit.
+                // An onCreate event is emitted only after the report is public.
+                tx.update(reportRef, { dispatchLastResult: completedResult,
+                    studentNotificationSent: recipients.some(({ roles }) => roles.includes('student')),
+                    parentNotificationSent: recipients.some(({ roles }) => roles.includes('parent')),
+                    status: 'sent', sendStatus: 'sent', sendMode: mode,
+                    scheduledSendAt: null, scheduledBy: null, sentAt: at });
+                tx.update(jobRef, { ...completedResult, completedUids: completed,
+                    atomicPublicationVersion: 1, leaseUntil: at });
+                return completedResult;
+            });
+            if (['completed', 'already_sent', 'superseded'].includes(result.state)) return result;
+            return finishWithoutDelivery(result.state);
+        } catch (error) {
+            // A rejected commit creates no subset of items. If the server
+            // committed but its response was lost, never overwrite that success.
+            return finishWithoutDelivery('failed', { errorCode: error.code || 'atomic-commit-failed',
+                targetCount: recipients.length, createdCount: 0, failedUids: recipients.map(({ uid }) => uid) });
+        }
     };
 
     return {
