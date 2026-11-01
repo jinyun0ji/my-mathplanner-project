@@ -56,8 +56,8 @@ test('notifyUsers creates one item per unique recipient and has exactly once aut
 
     const result = await notifications.notifyUsers({
         userIds: ['student', 'parent', 'student'],
-        payload: { type: 'GRADE_PUBLISHED', title: 'title', body: 'body' },
-        fcmData: { type: 'GRADE_PUBLISHED', refCollection: 'grades', refId: 'grade-1' },
+        payload: { type: 'lesson_report', title: 'title', body: 'body' },
+        fcmData: { type: 'lesson_report', refCollection: 'lessonReports', refId: 'report-1' },
     });
 
     assert.equal(writes.length, 2);
@@ -216,9 +216,9 @@ test('manual retry executes its direct FCM path without creating notification it
         get: async () => ({
             exists: true,
             data: () => ({
-                type: 'GRADE_PUBLISHED',
-                refCollection: 'grades',
-                refId: 'grade-1',
+                type: 'lesson_report',
+                refCollection: 'lessonReports',
+                refId: 'report-1',
                 retry: {},
             }),
         }),
