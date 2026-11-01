@@ -659,9 +659,32 @@ service cloud.firestore {
       allow write: if isStaffOrAdminOrTeacher();
     }
 
+    function clinicManagedFields() {
+      return ['reservationRevision', 'reservationStartsAt', 'reminderDueAt',
+        'confirmationStatus', 'confirmedRevision', 'confirmedAt', 'confirmedBy'];
+    }
+    function clinicBookingFields() {
+      return ['date', 'plannedTime', 'timeSlot', 'time', 'slot'];
+    }
+    function isClinicBooking(data) {
+      return data.get('plannedTime', '') is string && data.get('plannedTime', '') != ''
+        || data.get('timeSlot', '') is string && data.get('timeSlot', '') != ''
+        || data.get('time', '') is string && data.get('time', '') != ''
+        || data.get('slot', '') is string && data.get('slot', '') != ''
+        || data.get('status', '') in ['pending', 'reserved', 'booked', 'scheduled', '예약', '예약됨', '입실 예정']
+        || data.keys().hasAny(clinicManagedFields());
+    }
+    function clinicManagedFieldsUnchanged() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(clinicManagedFields());
+    }
     match /clinicLogs/{docId} {
       allow read: if signedIn();
-      allow write: if isStaffOrAdminOrTeacher();
+      // Unreserved activity logging remains a client operation. Reservations use callables.
+      allow create: if isStaffOrAdminOrTeacher() && !isClinicBooking(request.resource.data);
+      allow update: if isStaffOrAdminOrTeacher() && clinicManagedFieldsUnchanged()
+        && (!(isClinicBooking(resource.data) || isClinicBooking(request.resource.data))
+          || !request.resource.data.diff(resource.data).affectedKeys().hasAny(clinicBookingFields()));
+      allow delete: if isStaffOrAdminOrTeacher();
     }
 
     match /staffTimeline/{docId} {
@@ -679,7 +702,10 @@ service cloud.firestore {
     // clinicReservations: 학생/부모는 본인 예약 read, 직원은 전체
     match /clinicReservations/{docId} {
       allow read: if signedIn();
-      allow write: if isStaffOrAdminOrTeacher();
+      allow create: if false; // createClinicReservation (Admin SDK) owns reservation creation.
+      allow update: if isStaffOrAdminOrTeacher() && clinicManagedFieldsUnchanged()
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(clinicBookingFields());
+      allow delete: if isStaffOrAdminOrTeacher();
     }
 
     match /clinicSessions/{docId} {

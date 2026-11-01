@@ -8,6 +8,8 @@ const {
     normalizeClassId,
 } = require('../_utils/ids');
 const { createUserIdentityResolver } = require('../identity/resolveUserIdentity');
+const { parseKoreanReservationTime, studentReservationKeys, checkReservationDate,
+    writeReservationDateLock } = require('./reservationPolicy');
 
 const buildReservationIdentity = ({ resolvedStudentAuthUid, requestAuthUid }) => ({
     authUid: String(resolvedStudentAuthUid || requestAuthUid || '').trim() || null,
@@ -41,6 +43,7 @@ const createClinicReservation = functions
     if (!timeSlot) missing.push('timeSlot');
 
     assertRequired(missing);
+    const times = parseKoreanReservationTime(date, timeSlot);
 
     const studentIdentity = await resolveIdentity(studentDocId);
     const resolvedStudentAuthUid = studentIdentity?.role === ROLE.STUDENT ? studentIdentity.authUid : '';
@@ -53,20 +56,11 @@ const createClinicReservation = functions
         : '';
 
     const col = db.collection('clinicReservations');
+    const student = await studentReservationKeys({ db, resolveIdentity, key: studentDocId });
 
     let reservationId = '';
     await db.runTransaction(async (tx) => {
-        const dupQ = await tx.get(
-            col
-                .where('studentDocId', '==', studentDocId)
-                .where('date', '==', date)
-                .where('status', 'in', ['reserved', 'booked', 'pending'])
-                .limit(1)
-        );
-
-        if (!dupQ.empty) {
-            throw new functions.https.HttpsError('already-exists', '이미 해당 날짜에 예약이 있습니다.');
-        }
+        const lock = await checkReservationDate(tx, db, student, date);
 
         const ref = col.doc();
         reservationId = ref.id;
@@ -78,12 +72,19 @@ const createClinicReservation = functions
             date,
             plannedTime: timeSlot,
             status: 'pending',
+            reservationRevision: 0,
+            ...times,
+            confirmationStatus: 'unconfirmed',
+            confirmedRevision: null,
+            confirmedAt: null,
+            confirmedBy: null,
             legacyPayload: data,
             createdAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
             createdBy: context.auth.uid,
             updatedBy: context.auth.uid,
         });
+        writeReservationDateLock(tx, lock, student, date, FieldValue.serverTimestamp());
     });
 
     return { ok: true, id: reservationId };

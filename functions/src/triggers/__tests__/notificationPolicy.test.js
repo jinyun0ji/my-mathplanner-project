@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const test = require('node:test');
 
 const functionsRoot = path.resolve(__dirname, '../../..');
-const removedNames = ['onLessonLogWritten', 'onAttendanceLogWritten', 'onHomeworkResultWritten'];
+const removedNames = ['onLessonLogWritten', 'onAttendanceLogWritten', 'onHomeworkResultWritten', 'onClinicLogsWriteCreateNotifications'];
 const removedPaths = ['lessonLogs', 'attendanceLogs', 'homeworkResults'].map((name) => `./triggers/${name}`);
 const remainingExports = [
     'acceptInviteAndCreateProfile', 'adminCreateLinkCode', 'api', 'auditAttendanceLogs', 'auditClinicLogs',
@@ -13,9 +13,9 @@ const remainingExports = [
     'createClinicReservation', 'createOrGetChatRoom', 'createStaffUser', 'deactivateStaff', 'ensureUserProfileDoc',
     'getStaffList', 'getViewerAnnouncements', 'markAllNotificationsRead', 'markChatRoomNotificationsRead',
     'markNotificationRead', 'onAnnouncementCreated', 'onChatMessageCreated', 'onChatRoomMessageCreated',
-    'onChatRoomWritten', 'onClinicLogsWriteCreateNotifications', 'onGradeWriteUpdateClassTestStats',
+    'onChatRoomWritten', 'onGradeWriteUpdateClassTestStats',
     'onGradeWritten', 'onNotificationItemCreated', 'requestAccountDeletion', 'resolveInviteCode',
-    'retryNotification', 'sendChatMessage', 'updateStaffRole',
+    'retryNotification', 'sendChatMessage', 'updateStaffRole', 'updateClinicReservationTime',
 ].sort();
 
 // Evaluate the actual two entry modules, substituting dependency modules only.
@@ -27,6 +27,7 @@ const exportSurface = (relativePath) => {
         module, exports: module.exports,
         require(name) {
             assert.ok(!removedPaths.includes(name), `Retired trigger is still imported: ${name}`);
+            assert.notEqual(name, './clinicNotifications', 'Clinic automatic notifications must not be registered');
             if (name === 'firebase-admin') return { apps: [{}] };
             if (relativePath === 'index.js' && name === './src') return exportSurface('src/index.js');
             assert.ok(name.startsWith('./'), `Unexpected entry dependency: ${name}`);
@@ -36,12 +37,14 @@ const exportSurface = (relativePath) => {
     return module.exports;
 };
 
-test('Functions export surface removes only three retired triggers and preserves all 33 other exports', () => {
+test('Functions exports preserve stage 1 policy and audit, replace clinic auto alerts with time-edit callable', () => {
     const exports = exportSurface('index.js');
     assert.deepEqual(Object.keys(exports).sort(), remainingExports);
     for (const name of removedNames) assert.equal(Object.hasOwn(exports, name), false);
     assert.equal(exports.onGradeWritten.module, './triggers/grades');
     assert.equal(exports.onGradeWriteUpdateClassTestStats.module, './classTestStats');
+    assert.equal(exports.auditClinicLogs.module, './auditLogs');
+    assert.equal(exports.updateClinicReservationTime.module, './clinic/updateClinicReservationTime');
 });
 
 test('retired notification-only modules are absent and production JS has no four retired event types', () => {
