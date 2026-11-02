@@ -7,11 +7,15 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 
 const projectId = 'demo-clinic-reservation';
-const host = '127.0.0.1:8080';
-if (process.env.FIRESTORE_EMULATOR_HOST !== host || process.env.GCLOUD_PROJECT !== projectId
+const rawPort = process.env.CLINIC_EMULATOR_PORT;
+const port = Number(rawPort);
+const host = `127.0.0.1:${rawPort}`;
+if (typeof rawPort !== 'string' || !/^[1-9]\d{0,4}$/.test(rawPort)
+    || !Number.isInteger(port) || port > 65535 || String(port) !== rawPort
+    || process.env.FIRESTORE_EMULATOR_HOST !== host || process.env.GCLOUD_PROJECT !== projectId
     || (process.env.GOOGLE_CLOUD_PROJECT && process.env.GOOGLE_CLOUD_PROJECT !== projectId)
     || process.env.FIREBASE_AUTH_EMULATOR_HOST) {
-    throw new Error('CLINIC_EMULATOR_SAFETY_STOP: require exact loopback/demo project, no Auth emulator.');
+    throw new Error('CLINIC_EMULATOR_SAFETY_STOP: require explicit CLINIC_EMULATOR_PORT (1-65535), matching loopback host, exact demo project, no Auth emulator.');
 }
 // Import SDKs only AFTER the safety check. Mock user tokens are emulator-only.
 const { initializeApp: initializeAdmin, deleteApp: deleteAdmin } = require('firebase-admin/app');
@@ -33,7 +37,7 @@ let anonymous;
 function client(uid) {
     const app = initializeApp({ projectId, apiKey: 'fictional-emulator-only-api-key' }, `${prefix}-${clients.length}`);
     const db = getClientFirestore(app);
-    connectFirestoreEmulator(db, '127.0.0.1', 8080, uid ? { mockUserToken: { sub: uid, user_id: uid } } : {});
+    connectFirestoreEmulator(db, '127.0.0.1', port, uid ? { mockUserToken: { sub: uid, user_id: uid } } : {});
     clients.push({ app, db });
     return db;
 }

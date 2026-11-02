@@ -102,11 +102,16 @@ an already running Firestore-only emulator, isolated from any Functions emulator
 
 ```sh
 env -u GOOGLE_APPLICATION_CREDENTIALS \
-  FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+  FIRESTORE_EMULATOR_HOST=127.0.0.1:8081 \
+  CLINIC_EMULATOR_PORT=8081 \
   GCLOUD_PROJECT=demo-clinic-reservation \
   node --test functions/src/clinic/integration/reservationRules.emulator.test.cjs
 ```
 
+`CLINIC_EMULATOR_PORT` is required (canonical decimal integer 1–65535); there is no
+default. Start a separate Firestore-only emulator on the selected port first.
+`FIRESTORE_EMULATOR_HOST` must exactly equal `127.0.0.1:${CLINIC_EMULATOR_PORT}`;
+localhost, external hosts, mismatched ports and production project IDs are refused.
 The suite refuses different/missing bindings before SDK imports. It uploads Rules
 only to the demo emulator namespace, uses mock client tokens, and deletes only its
 unique documents. It must not share this demo namespace with other tests. No FCM
