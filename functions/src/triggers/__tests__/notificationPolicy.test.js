@@ -10,7 +10,7 @@ const removedPaths = ['lessonLogs', 'attendanceLogs', 'homeworkResults'].map((na
 const remainingExports = [
     'acceptInviteAndCreateProfile', 'adminCreateLinkCode', 'api', 'auditAttendanceLogs', 'auditClinicLogs',
     'auditGrades', 'auditHomeworkResults', 'auditPayments', 'broadcastChatMessage', 'claimStudentLinkCode',
-    'createClinicReservation', 'createOrGetChatRoom', 'createStaffUser', 'deactivateStaff', 'ensureUserProfileDoc',
+    'createClinicReservation', 'confirmClinicReservations', 'createOrGetChatRoom', 'createStaffUser', 'deactivateStaff', 'ensureUserProfileDoc',
     'getStaffList', 'getViewerAnnouncements', 'markAllNotificationsRead', 'markChatRoomNotificationsRead',
     'markNotificationRead', 'onAnnouncementCreated', 'onChatMessageCreated', 'onChatRoomMessageCreated',
     'onChatRoomWritten', 'onGradeWriteUpdateClassTestStats',
@@ -45,6 +45,7 @@ test('Functions exports preserve stage 1 policy and audit, replace clinic auto a
     assert.equal(exports.onGradeWriteUpdateClassTestStats.module, './classTestStats');
     assert.equal(exports.auditClinicLogs.module, './auditLogs');
     assert.equal(exports.updateClinicReservationTime.module, './clinic/updateClinicReservationTime');
+    assert.equal(exports.confirmClinicReservations.module, './clinic/confirmClinicReservations');
 });
 
 test('retired notification-only modules are absent and production JS has no four retired event types', () => {

@@ -51,11 +51,13 @@ function createFakeFirestore(initial = {}) {
                     },
                     update: (ref, data) => pending.push({ path: ref.path, data, merge: true }),
                     set: (ref, data) => pending.push({ path: ref.path, data }),
+                    create: (ref, data) => pending.push({ path: ref.path, data, create: true }),
                 };
                 const result = await callback(tx);
                 if ([...reads].some(([key, version]) => (versions.get(key) || 0) !== version)) continue;
                 if (failure) { failure = false; throw Object.assign(new Error('Injected commit failure'), { code: 'unavailable' }); }
                 for (const write of pending) {
+                    if (write.create && state.has(write.path)) throw Object.assign(new Error('Document already exists'), { code: 6 });
                     if (write.merge && !state.has(write.path)) throw new Error('Missing document');
                 }
                 for (const write of pending) {

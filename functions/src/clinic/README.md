@@ -227,3 +227,141 @@ Emulator pass/fail results. Real server defects remain unconfirmed until this su
 is executed. If an integration case fails, retain its test name, expected vs actual
 code/state and SDK/emulator versions; investigate production code separately before
 changing it. Callable transport token/App Check validation is outside `.run()` tests.
+
+## Stage 2-B-1: manual confirmation server (not deployed)
+
+`confirmClinicReservations` is a v1 callable in `us-central1`:
+
+```json
+{
+  "reservations": [
+    { "sourceCollection": "clinicReservations", "reservationId": "existing-id", "expectedRevision": 0 }
+  ]
+}
+```
+
+Require 1–20 items and only the fields above. Reject duplicate source/ID pairs,
+even with different revisions, and malformed items before any write. No source
+fallback. Both collections and identical IDs in different collections are supported.
+Missing legacy revision means 0. A stale current revision is an individual failure.
+
+Caller roles match 2-A: admin/staff/teacher/teaching/staffOrTeaching, resolved from
+server profiles, never client role claims. The existing resolver receives an
+offline Auth adapter: only the already-verified callable caller UID is known to
+exist; arbitrary student document IDs are never assumed to be Auth UIDs. Canonical
+student profiles support index links/aliases, reverse-only and unlinked profiles.
+No Auth service, recipient lookup, notification settings or FCM is contacted.
+Transactions re-read caller/student profile and index evidence before committing.
+Both initial authorization and the transaction reject server-profile `active === false`.
+`active === true` and a missing legacy active field remain role-authorized. Client
+role/active claims are ignored; a concurrent profile deactivation is rechecked on
+transaction retry. `deactivateStaff` itself is unchanged.
+
+### Result and atomicity
+
+Each reservation commits independently, in request order. Response: `results` and
+`summary: { requested, confirmed, alreadyConfirmed, failed }`. Each result has the
+request identity plus:
+
+- `status: confirmed`, eventKey, reservationRevision, outboxState=pending;
+- `status: already_confirmed`, original eventKey and current outboxState;
+- `status: failed`, error `{code, message}`.
+
+Authorization/input errors reject the callable. Callers must inspect item results;
+a normal callable response does not mean all items succeeded. A lost commit response
+may report failure despite a commit: retry then returns already_confirmed.
+If the callable itself times out during a bulk request, earlier independent commits
+may already exist. Reload and retry the same keys; never assume bulk rollback.
+
+Every transaction reads reservation, history, outbox and identity evidence before
+writes. It validates revision, future KST time and pending activity state, then:
+
+1. Creates `clinicReservationConfirmations/{eventKey}` with `tx.create`.
+2. Creates `clinicConfirmationOutbox/{eventKey}` with `tx.create`.
+3. Updates root confirmation fields and derived time metadata.
+
+All three commit or none commit. Event keys hash an unambiguously JSON-encoded
+version/source/ID/revision tuple; stored full identity is checked on retries.
+History contains canonical student profile ID, source path, revision, date/time
+and Timestamp snapshots, Asia/Seoul, actor Auth UID/profile ID and server confirmedAt.
+The previous root confirmedRevision/At/By tuple is preserved in previousConfirmation,
+including legacy evidence without a prior history document. This does not create
+a verified historical delivery receipt.
+
+Root confirmedAt, history confirmedAt and outbox createdAt use a server timestamp
+transform in the same commit. Retries never refresh first actor/time or overwrite
+history/outbox state. History is server-created only; Rules deny client writes.
+Privileged Admin SDK access is **not** absolutely immutable.
+
+Outbox starts pending, attempts=0, null owner/leaseUntil/attempt timestamps/lastError,
+and empty recipientResults with recipientResolution=not_started. Defined states:
+pending/deferred/processing/partial/completed/superseded. There is **no consumer**.
+
+### Notification independence and compatibility
+
+Notification OFF or FCM/recipient failure does not block confirmation: those
+systems are neither imported nor invoked. A future worker owns flag checks and
+deferred/retry transitions. If Firestore itself rejects the transaction, including
+an outbox write, confirmation also fails to preserve required database atomicity.
+
+- No notification items, FCM, UI, comment/no-show changes or Scheduler.
+- 2-A production creation/time-update code and student/date locks are unchanged.
+  Confirmation serializes with time edits through the same reservation document.
+- Legacy confirmation backfills revision=0 and derives reservationStartsAt and
+  reminderDueAt from server date/plannedTime without changing date/time or
+  incrementing revision. Other activity/link/comment/notificationSent data survive.
+- A later 2-A time edit increments revision and requires reconfirmation, preserving
+  prior root confirmation evidence. Reconfirmation creates a new event. Old history
+  and outbox remain; the future worker MUST reject outdated revisions/statuses.
+- Confirmation winning a race can validly be followed by a time edit, leaving
+  reconfirmation_required. An edit winning first rejects the old confirmation.
+- Missing/partial/mismatched receipts or same-revision legacy confirmed metadata
+  return failed-precondition for explicit review, never silent repair/re-notification.
+  notificationSent is not confirmation evidence. Duplicate requests still require
+  valid activity/future time; expired/completed reservations are rejected unchanged.
+- Different legacy reservation IDs on one student/day are not deduplicated by
+  confirmation; booking conflict prevention remains 2-A's responsibility.
+
+Rules allow existing staff-group readers to read history and deny all client
+history writes. Outbox reads/writes are denied to all clients, including staff.
+Latest confirmation remains visible on the original document; internal recipient
+receipts must not be copied there. Existing source Rules permissions are unchanged.
+
+### Mac verification
+
+Start the dedicated Firestore-only emulator as described above (never 8080, demo
+project only). Run the suites sequentially:
+
+```sh
+cd /Users/subin/Desktop/mathplanner/management_ver_2
+env -u GOOGLE_APPLICATION_CREDENTIALS \
+  -u FIREBASE_AUTH_EMULATOR_HOST -u FUNCTIONS_EMULATOR \
+  CLINIC_EMULATOR_PORT=8081 FIRESTORE_EMULATOR_HOST=127.0.0.1:8081 \
+  GCLOUD_PROJECT=demo-clinic-reservation GOOGLE_CLOUD_PROJECT=demo-clinic-reservation \
+  node --test --test-concurrency=1 \
+  functions/src/clinic/integration/reservationRules.emulator.test.cjs \
+  functions/src/clinic/integration/reservationTransactions.emulator.test.cjs \
+  functions/src/clinic/integration/confirmationRules.emulator.test.cjs \
+  functions/src/clinic/integration/confirmationTransactions.emulator.test.cjs
+```
+
+Original Rules 8 and transaction 19 cases are unchanged. New Rules 5 cover staff
+history reads, denied history writes/outbox access and source permission regression.
+New transaction 10 cover both sources, server timestamps/no-op retries, concurrent
+confirmation, server-rejected commit/retry, reconfirmation history, 2-A edit races
+and item-independent failures with notification OFF, plus initial/mid-request
+deactivation and concurrent deactivation/confirmation. The bulk failure case also
+checks the exact error, unchanged data/updateTime, absent history/outbox, and the
+successful item's exact source/ID. New entry guards are unit-tested.
+
+The new Rules suite uploads repository Rules only to the guarded non-8080 demo
+emulator. Transaction suites never upload Rules. Cleanup only deletes owned test
+documents; no database reset or notifications. The in-memory double adds create-only
+preconditions; confirmation unit tests also exercise the unchanged 2-A factory.
+
+Codex cannot currently execute the emulator (no CLI/binary; official download blocked
+with HTTP 403). Actual integration outcomes remain unverified until the Mac run;
+unit/syntax/SDK registration checks are separate. `.run()` does not test HTTPS token/
+App Check transport. Before any deployment, check that the retired clinic automatic
+notification function is not still deployed: local export removal does not remove
+a remote trigger.

@@ -37,8 +37,8 @@ test('transaction suite refuses credential files and Auth/Functions emulator bin
     }
 });
 
-function entryWithSdkFence(binding) {
-    const filename = path.resolve(__dirname, '../integration/reservationTransactions.emulator.test.cjs');
+function entryWithSdkFence(binding, entry = 'reservationTransactions.emulator.test.cjs') {
+    const filename = path.resolve(__dirname, '../integration', entry);
     const env = { ...process.env };
     for (const name of [...Object.keys(valid), 'GOOGLE_CLOUD_PROJECT', 'GOOGLE_APPLICATION_CREDENTIALS',
         'FIREBASE_AUTH_EMULATOR_HOST', 'FUNCTIONS_EMULATOR']) delete env[name];
@@ -71,3 +71,15 @@ test('safe bindings reach the SDK import fence without opening a network connect
     assert.match(result.stderr, /SDK_IMPORT_FENCE/);
     assert.doesNotMatch(result.stderr, stop);
 });
+for (const entry of ['confirmationTransactions.emulator.test.cjs', 'confirmationRules.emulator.test.cjs']) {
+    test(`${entry}: invalid bindings stop before SDK import; valid bindings reach only the SDK fence`, () => {
+        const unsafe = entryWithSdkFence({}, entry);
+        assert.equal(unsafe.error, undefined);
+        assert.match(unsafe.stderr, stop);
+        assert.doesNotMatch(unsafe.stderr, /SDK_IMPORT_FENCE/);
+        const safe = entryWithSdkFence(valid, entry);
+        assert.equal(safe.error, undefined);
+        assert.match(safe.stderr, /SDK_IMPORT_FENCE/);
+        assert.doesNotMatch(safe.stderr, stop);
+    });
+}

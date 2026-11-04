@@ -708,6 +708,16 @@ service cloud.firestore {
       allow delete: if isStaffOrAdminOrTeacher();
     }
 
+    // Confirmation history is append-only in server code; Admin SDK bypasses Rules.
+    match /clinicReservationConfirmations/{eventKey} {
+      allow read: if isStaffOrAdminOrTeacher();
+      allow create, update, delete: if false;
+    }
+    // Internal delivery/recipient state is not exposed to clients, including staff.
+    match /clinicConfirmationOutbox/{eventKey} {
+      allow read, write: if false;
+    }
+
     match /clinicSessions/{docId} {
       allow read, get, list: if isStaffOrAdminOrTeacher()
         || (isSignedIn() && isMyStudentUid(resource.data.studentDocId));
