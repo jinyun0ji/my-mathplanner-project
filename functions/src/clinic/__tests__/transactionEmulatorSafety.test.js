@@ -71,7 +71,8 @@ test('safe bindings reach the SDK import fence without opening a network connect
     assert.match(result.stderr, /SDK_IMPORT_FENCE/);
     assert.doesNotMatch(result.stderr, stop);
 });
-for (const entry of ['confirmationTransactions.emulator.test.cjs', 'confirmationRules.emulator.test.cjs']) {
+for (const entry of ['confirmationTransactions.emulator.test.cjs', 'confirmationRules.emulator.test.cjs',
+    'confirmationOutbox.emulator.test.cjs', 'confirmationInboxRules.emulator.test.cjs']) {
     test(`${entry}: invalid bindings stop before SDK import; valid bindings reach only the SDK fence`, () => {
         const unsafe = entryWithSdkFence({}, entry);
         assert.equal(unsafe.error, undefined);

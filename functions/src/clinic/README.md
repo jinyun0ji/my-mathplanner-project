@@ -365,3 +365,149 @@ unit/syntax/SDK registration checks are separate. `.run()` does not test HTTPS t
 App Check transport. Before any deployment, check that the retired clinic automatic
 notification function is not still deployed: local export removal does not remove
 a remote trigger.
+
+## Stage 2-B-2a: internal Outbox → Inbox service (not activated)
+
+`createClinicConfirmationOutboxService({ db, auth, ...options }).process(eventKey)`
+in `confirmationOutbox.js` is an internal factory with explicit dependencies.
+It registers **no callable, Outbox trigger or Scheduler**. The confirmation API,
+2-A production code, common FCM trigger, UI and report/message logic are unchanged.
+Auth must provide the real Admin `getUser` interface in any future server caller;
+tests provide a fictional account map and never contact operational Auth.
+
+**Do not invoke/activate this service on a live project before 2-B-2b.** Creating
+an inbox is already an FCM event in the existing `onNotificationItemCreated`.
+That handler does NOT yet inspect the new event/revision/receipt fields. A pending
+push receipt is preparation data, not an effective FCM suppression flag. This
+stage's tests must run with **Firestore only**, without a Functions emulator.
+
+### State and transaction rules
+
+| Current situation | Outcome |
+| --- | --- |
+| Due pending/deferred/partial or expired processing | Claim processing with UUID owner, increment attempts, set lastAttemptedAt and leaseUntil |
+| Valid processing lease | busy; no changes |
+| Future nextAttemptAt | not_due; no changes |
+| Sending OFF | deferred, notification_disabled, future nextAttemptAt; no new inbox/Auth work at claim, no confirmation changes |
+| Successful eligible recipients, no unresolved issues | completed: **inbox creation only**, not FCM success |
+| Lookup/conflict/write/limit failure | partial; nextAttemptAt set, prior successes retained |
+| Old revision, changed confirmation/time/student, inactive/started/deleted/past reservation | superseded; no new inbox |
+| Expired/replaced owner after claim | lease_lost; old worker cannot publish or change the new owner's result |
+
+Outbox identity fields/schemaVersion and the original six state values are retained.
+busy/not_due/lease_lost/not_found are method outcomes, never persisted as new states.
+Completed and superseded are terminal for target discovery. Reprocessing a completed
+event whose source has changed can mark it superseded without touching existing
+inboxes or push receipts. New parent links after completion do not silently resend
+the old event. Deferred/partial work becomes retryable after nextAttemptAt.
+
+Claim, paired creation and finalization use transactions. Every read precedes
+writes. Source/history/outbox are re-read for every batch; owner/lease and sending
+flag are checked again before writes. Concurrent source or profile/index changes
+conflict with reads or invalidate recipient evidence. No Auth calls occur inside a
+transaction. Auth disabled/account changes after lookup cannot be made atomic with
+Firestore: 2-B-2b must revalidate before push, as agreed in plan A.
+
+Defaults: lease 120 seconds, retry delay 30 seconds, 25 recipients per write batch,
+200 resolved recipients per event. Each batch writes at most 25 inboxes + 25
+receipts + one outbox update. Existing results are bounded to 500 entries/128 KiB;
+new documents to 16 KiB each and estimated atomic writes to 2 MiB. Oversized plans
+fail explicitly/partially instead of truncating into completed. These budgets are
+below Firestore's limits; SDK/server enforcement still applies. Auth lookup time
+must fit the configurable lease (up to ten minutes); expiration safely refuses
+publication rather than extending an abandoned owner indefinitely.
+
+### Recipient policy
+
+`confirmationRecipients.js` adapts the report recipient field shapes and shared
+Auth alias constants; neither existing recipient module is modified. It supports
+student-side parent fields and parent-side child arrays, strings/{id}/references,
+reverse userAuthIndex links and multiple verified login accounts. Even a legacy
+equal-ID account requires an actual successful Auth lookup; no profile-ID fallback.
+Each UID must exist, match its requested UID, be non-disabled and have consistent
+binding evidence. active=false profiles are excluded; missing active is allowed.
+An inactive/disabled student login is excluded individually; a separately active,
+validly linked parent can still receive. Exclusions are recorded as such, not
+reported as successful deliveries to that excluded account.
+
+If both directions declare relationship data, contradictory/empty lists are treated
+as conflicts, rather than unioned into a guessed parent. Direct-only or reverse-only
+links are supported when the other direction is absent. Multiple profile claims
+for an unindexed UID are ambiguous and excluded; a correct explicit forward index
+keeps its rightful profile while excluding conflicting claims. Duplicate fields or
+links to the same verified account produce one target. Known good targets continue
+when another parent has a broken link or transient Auth error. Selected profile/
+binding snapshots are hashed in memory and re-read in the inbox transaction; raw
+profile data or credentials are never stored in receipts.
+
+Bounds: up to 1000 parent profiles scanned, 50 Auth candidates per profile plus
+the optional equal-ID candidate, and 500 unique Auth lookups per resolution.
+Limits are explicit issues. Missing links, binding conflicts, inactive/disabled
+exclusions and retryable Auth/read errors have different reason codes. Issues and
+exclusions are stored with total counts and a 100-entry bounded detail list.
+
+### Inbox and delivery receipt
+
+`notificationIdFor(eventKey, authUid)` hashes JSON `[eventKey, authUid]` with prefix
+`clinicConfirmationInbox_`. The same ID identifies its private receipt:
+
+- `notifications/{authUid}/items/{notificationId}`
+- `clinicConfirmationDeliveries/{notificationId}`
+
+Inbox uses the existing builder: type=`CLINIC_RESERVATION_CONFIRMED`,
+category=`clinicConfirmation`, title=`클리닉 예약 완료`, body=`YYYY-MM-DD HH:mm`
+from the immutable confirmation snapshot. ref/refCollection/refId identify the
+exact source; studentId is the canonical profile ID. Both inbox and receipt include
+schemaVersion=1, deliveryKind=clinic_confirmation, eventKey, sourceCollection,
+reservationId, sourcePath, reservationRevision, studentProfileDocId,
+recipientAuthUid, notificationId and deliveryId.
+
+Receipt adds confirmationRef/outboxRef/inboxPath, recipientProfileIds/recipientRoles,
+inboxState=created, inboxCreatedAt, createdAt and updatedAt. Future push fields:
+pushState=pending, pushAttempts=0, and null pushOwner/pushLeaseUntil/
+pushNextAttemptAt/pushLastAttemptedAt/pushLastError/pushAcceptedAt. They are never
+consumed here. Rules deny all client receipt reads/writes, including staff.
+
+Only absent **pairs** are created with tx.create. Matching existing pairs are
+never overwritten: isRead/readAt/createdAt and future accepted/unknown push states
+survive retries. One-sided or conflicting pairs fail closed for that UID, while
+normal targets continue. The service does not reconstruct a missing receipt as
+push-pending, or recreate a deleted inbox and accidentally trigger a second push.
+Per-UID outbox recipientResults summarize inbox creation and point at the receipt;
+they do not claim FCM success. A rejected/lost-ack batch is safely retried by
+reading the same deterministic pairs. Prior batches survive later batch failure.
+
+### Verification and remaining 2-B-2b work
+
+Run the existing Node.js 20 unit command above. New unit files cover real recipient
+logic with fictional Auth, lease takeover, staged-write conflicts, paired rollback,
+read/push-state preservation, partial retries, limits and OFF/test-UID behavior.
+Existing 2-B-1 and 2-A tests remain part of that command.
+
+With the existing dedicated **Firestore-only** emulator on 8081, from Mac repo root:
+
+```sh
+env -u GOOGLE_APPLICATION_CREDENTIALS \
+  -u FIREBASE_AUTH_EMULATOR_HOST -u FUNCTIONS_EMULATOR \
+  CLINIC_EMULATOR_PORT=8081 FIRESTORE_EMULATOR_HOST=127.0.0.1:8081 \
+  GCLOUD_PROJECT=demo-clinic-reservation GOOGLE_CLOUD_PROJECT=demo-clinic-reservation \
+  node --test --test-concurrency=1 \
+  functions/src/clinic/integration/confirmationOutbox.emulator.test.cjs \
+  functions/src/clinic/integration/confirmationInboxRules.emulator.test.cjs
+```
+
+These add 12 transaction/recipient cases plus two Rules cases. Auth is fictional,
+Firestore transactions are real. Only the new Rules suite uploads repository Rules
+to the guarded demo emulator. No 8080/production/Auth/FCM/Functions access, database
+reset or unrelated cleanup. Run separately from other writers; do not start/load
+Functions alongside these inbox-writing tests. The original four-suite command
+still verifies the existing 42 cases. Actual emulator outcomes in Codex are **not
+verified**; SDK registration/syntax checks are not emulator execution.
+
+Before activation, 2-B-2b must add a new-type branch in the common FCM trigger that
+validates the private receipt and current revision/relationship immediately before
+push, claims push ownership, records accepted/failed/unknown outcomes and never
+automatically resends unknown outcomes. Recovery must inspect push state even when
+the outbox is inbox-completed; direct push from this service would double-send.
+Parent filtering, Auth UID subscriptions, click navigation and legacy remote clinic
+trigger retirement also remain separate prerequisites. No UI changes are included.

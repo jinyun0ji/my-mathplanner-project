@@ -14,7 +14,7 @@ function createFakeFirestore(initial = {}) {
     let nextId = 0;
     let failure = false;
     const snapshot = (path) => ({ id: path.split('/').pop(), ref: doc(path), exists: state.has(path), data: () => clone(state.get(path)) });
-    const doc = (path) => ({ path, id: path.split('/').pop(), get: async () => snapshot(path) });
+    const doc = (path) => ({ path, id: path.split('/').pop(), get: async () => snapshot(path), collection: (name) => collection(`${path}/${name}`) });
     const collection = (path, filters = [], count = Infinity) => ({
         path,
         doc: (id = `generated-${++nextId}`) => doc(`${path}/${id}`),
@@ -24,7 +24,7 @@ function createFakeFirestore(initial = {}) {
         },
         limit: (size) => collection(path, filters, size),
         get: async () => {
-            const docs = [...state.keys()].filter((key) => key.startsWith(`${path}/`) && key.split('/').length === 2)
+            const docs = [...state.keys()].filter((key) => key.startsWith(`${path}/`) && key.split('/').length === path.split('/').length + 1)
                 .filter((key) => filters.every(({ field, value }) => state.get(key)[field] === value)).slice(0, count).map(snapshot);
             return { docs, empty: !docs.length };
         },

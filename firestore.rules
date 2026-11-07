@@ -717,6 +717,10 @@ service cloud.firestore {
     match /clinicConfirmationOutbox/{eventKey} {
       allow read, write: if false;
     }
+    // Inbox/publication receipts and future push state are server-only.
+    match /clinicConfirmationDeliveries/{deliveryId} {
+      allow read, write: if false;
+    }
 
     match /clinicSessions/{docId} {
       allow read, get, list: if isStaffOrAdminOrTeacher()
